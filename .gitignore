@@ -1,1 +1,10 @@
+*.py[cod]
 /__pycache__
+
+# C extensions
+*.so
+
+# Packages
+*.egg
+*.egg-info
+
