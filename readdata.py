@@ -123,14 +123,72 @@ def getMatchedFeatures(sample):
 		pl.show();
 		
   
-def testDescriptor(image_name):
-	# extract surf features:
-	im2 = cv2.imread(image_name);
+def testExperimentalSetup(test_dir, image_name, data_name):
+	
+	# the data will serve as a database for matching with the image:
+
+	# read the data:
+	result = loadData(test_dir + "/" + data_name);
+
+	# extract surf features from the image:
+	im2 = cv2.imread(test_dir + "/" + image_name);
 	im = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
-	surfDetector = cv2.FeatureDetector_create("SURF")
+	im = cv2.resize(im, (im.shape[1] / 4, im.shape[0] / 4))
+	
+	surfDetector = cv2.SURF();
+	surfDetector.hessianThreshold = 2500;
+	surfDetector.nOctaves = 4;
+	surfDetector.nOctaveLayers = 2;
+	mask = np.ones(im.shape, dtype=np.uint8)
+	keypoints = surfDetector.detect(im, mask);
+	
+	#surfDetector = cv2.FeatureDetector_create("SURF")
+	#keypoints = surfDetector.detect(im)
+	
 	surfDescriptorExtractor = cv2.DescriptorExtractor_create("SURF")
-	keypoints = surfDetector.detect(im)
 	(keypoints, descriptors) = surfDescriptorExtractor.compute(im,keypoints)
-	pdb.set_trace();
-  
-  
+	
+	n_features_image = len(descriptors);
+
+	# definition of a match:
+	NN_THRESHOLD = 0.75;
+	
+	# iterate over the data:
+	n_samples = len(result);
+	sam = 0;
+	for sample in result:
+		# number of frames in sample:
+		n_frames = len(sample['frames']);
+		
+		print 'Sample %d' % sam;
+		
+		for fr in range(n_frames):
+		
+			n_matches = 0;
+		
+			# define current frame:
+			frame = sample['frames'][fr];
+			n_features_frame = len(frame['features']['features']);
+ 
+			for ft1 in range(n_features_image):
+			
+				step = int(round(n_features_image / 10));
+				if(ft1 % step == 0):
+					print '.',
+
+				# determine the distances to the features in the frame:
+				distances = np.array([0.0] * n_features_frame);
+				for ft2 in range(n_features_frame):
+					distances[ft2] = np.linalg.norm(np.array(descriptors[ft1]) - np.array(frame['features']['features'][ft2]['descriptor']));
+					# print 'distances[%d] = %f' % (ft2, distances[ft2]);
+			
+				# sort the distances:
+				sindices = np.argsort(distances);
+				
+				# the second nearest neighbor has to be sufficiently far for a match:
+				if(distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
+					n_matches += 1;
+			
+			print '\nFrame %d, number of matches = %d\n' % (fr, n_matches);
+		
+		sam += 1;
