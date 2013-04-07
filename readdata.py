@@ -133,7 +133,8 @@ def testExperimentalSetup(test_dir, image_name, data_name):
 	# extract surf features from the image:
 	im2 = cv2.imread(test_dir + "/" + image_name);
 	im = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
-	im = cv2.resize(im, (im.shape[1] / 4, im.shape[0] / 4))
+	im = cv2.resize(im, (160, 120))
+	# im = cv2.resize(im, (im.shape[1] / 4, im.shape[0] / 4))
 	
 	surfDetector = cv2.SURF();
 	surfDetector.hessianThreshold = 2500;
@@ -147,8 +148,17 @@ def testExperimentalSetup(test_dir, image_name, data_name):
 	
 	surfDescriptorExtractor = cv2.DescriptorExtractor_create("SURF")
 	(keypoints, descriptors) = surfDescriptorExtractor.compute(im,keypoints)
-	
 	n_features_image = len(descriptors);
+	print 'number of features in image: %d' % n_features_image
+	descriptor_magnitudes_image = np.array([0.0] * n_features_image);
+	for fi in range(n_features_image):
+		magn = np.linalg.norm(descriptors[fi]);
+		#print 'fi = %d, magn = %f' % (fi, magn);
+		descriptor_magnitudes_image[fi] = magn;
+	
+	#pl.figure(facecolor='white', edgecolor='white');
+	#pl.hist(descriptor_magnitudes_image, 30);
+	#pl.title('descriptor magnitudes image');
 
 	# definition of a match:
 	NN_THRESHOLD = 0.75;
@@ -169,7 +179,19 @@ def testExperimentalSetup(test_dir, image_name, data_name):
 			# define current frame:
 			frame = sample['frames'][fr];
 			n_features_frame = len(frame['features']['features']);
- 
+			print 'number of features in frame %d = %d' % (fr, n_features_frame); 
+			
+			# compare descriptor magnitude with the ones from the image:
+			descriptor_magnitudes_frame = np.array([0.0] * n_features_frame);
+			for ff in range(n_features_frame):
+				descriptor_magnitudes_frame[ff] = np.linalg.norm(frame['features']['features'][ff]['descriptor']);
+				
+			# plot histograms descriptor magnitudes image / frame for comparison:
+			#pl.figure(facecolor='white', edgecolor='white');
+			#pl.hist([np.asarray(descriptor_magnitudes_image), np.asarray(descriptor_magnitudes_frame)], 30, color=[(0.2,0.2,0.2), (1.0,1.0,1.0)]);
+			# pl.hist(descriptor_magnitudes_frame, 30);
+			
+			closest_distances = np.array([0.0] * n_features_image);
 			for ft1 in range(n_features_image):
 			
 				step = int(round(n_features_image / 10));
@@ -179,16 +201,20 @@ def testExperimentalSetup(test_dir, image_name, data_name):
 				# determine the distances to the features in the frame:
 				distances = np.array([0.0] * n_features_frame);
 				for ft2 in range(n_features_frame):
+					#pdb.set_trace();
 					distances[ft2] = np.linalg.norm(np.array(descriptors[ft1]) - np.array(frame['features']['features'][ft2]['descriptor']));
 					# print 'distances[%d] = %f' % (ft2, distances[ft2]);
 			
 				# sort the distances:
 				sindices = np.argsort(distances);
 				
+				# store the closest distance:
+				closest_distances[ft1] = distances[sindices[0]];
+				
 				# the second nearest neighbor has to be sufficiently far for a match:
 				if(distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
 					n_matches += 1;
 			
-			print '\nFrame %d, number of matches = %d\n' % (fr, n_matches);
+			print '\nFrame %d, number of matches = %d, average closest match (dist in feature space) = %f\n' % (fr, n_matches, np.mean(closest_distances));
 		
 		sam += 1;
