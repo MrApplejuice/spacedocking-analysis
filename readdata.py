@@ -122,7 +122,87 @@ def getMatchedFeatures(sample):
 		pl.title('t = %d' % (fr));
 		pl.show();
 		
-  
+
+def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
+
+	# extract the SURF features from the images:
+	(keypoints1, descriptors1, img1, img1_gray) = extractSURFfeaturesFromImage(test_dir + "/" + image_name1);
+	(keypoints2, descriptors2, img2, img2_gray) = extractSURFfeaturesFromImage(test_dir + "/" + image_name2);
+	n_features1 = len(keypoints1);
+	n_features2 = len(keypoints2);
+	
+	# make the figure:
+	#pl.figure();
+	#pl.hold(True);
+	
+	cv2.namedWindow("matches", cv2.cv.CV_WINDOW_NORMAL)
+	h1, w1 = img1_gray.shape[:2]
+	h2, w2 = img2_gray.shape[:2]
+	vis = np.zeros((max(h1, h2), w1+w2), np.uint8)
+	vis[:h1, :w1] = img1_gray
+	vis[:h2, w1:w1+w2] = img2_gray
+	vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
+	
+	# match the features:
+	for ft1 in range(n_features1):
+	
+		# determine the distances to the features in the second frame:
+		distances = np.array([0.0] * n_features2);
+		for ft2 in range(n_features2):
+			distances[ft2] = np.linalg.norm(np.array(descriptors1[ft1]) - np.array(descriptors2[ft2]));
+		
+		# sort the distances:
+		sindices = np.argsort(distances);
+		
+		# the second nearest neighbor has to be sufficiently far for a match:
+		if(distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
+			print 'match'
+			# we have a match:
+			# properties of key points:
+			# pt.x, pt.y
+			# size
+			# angle
+			# response
+			# octave
+			x1 = keypoints1[ft1].pt[0];
+			y1 = keypoints1[ft1].pt[1];
+			x2 = keypoints2[sindices[0]].pt[0];
+			y2 = keypoints2[sindices[0]].pt[1];
+			#cv2.circle(img1, (int(x1), int(y1)), 4, (0.0,255.0,0.0), -1)
+			#cv2.circle(img2, (int(x2), int(y2)), 4, (0.0,255.0,0.0), -1)
+			cv2.line(vis, (int(x1), int(y1)), (int(x2+w1), int(y2)), (0.0, 255.0, 0.0), 1)
+			#pl.plot([x1, x2], [y1,y2]);
+	
+	cv2.imshow('matches', vis)
+	#cv2.namedWindow("img1", cv2.cv.CV_WINDOW_NORMAL)
+	#cv2.imshow('img1',img1)
+	#cv2.namedWindow("img2", cv2.cv.CV_WINDOW_NORMAL)
+	#cv2.imshow('img2',img2)
+
+def extractSURFfeaturesFromImage(image_name):
+	im2 = cv2.imread(image_name);
+	
+	#cv2.namedWindow("img", cv2.cv.CV_WINDOW_NORMAL)
+	#cv2.imshow('img',im2)
+	
+	im = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
+	im = cv2.resize(im, (320, 240))
+	#im = cv2.resize(im, (im.shape[1] / 2, im.shape[0] / 2))
+	
+	surfDetector = cv2.SURF();
+	surfDetector.hessianThreshold = 2500;
+	surfDetector.nOctaves = 4;
+	surfDetector.nOctaveLayers = 2;
+	mask = np.ones(im.shape, dtype=np.uint8)
+	keypoints = surfDetector.detect(im, mask);
+	
+	#surfDetector = cv2.FeatureDetector_create("SURF")
+	#keypoints = surfDetector.detect(im)
+	
+	surfDescriptorExtractor = cv2.DescriptorExtractor_create("SURF")
+	(keypoints, descriptors) = surfDescriptorExtractor.compute(im,keypoints)
+	return (keypoints, descriptors, im2, im);
+
 def testExperimentalSetup(test_dir, image_name, data_name):
 	
 	# the data will serve as a database for matching with the image:
