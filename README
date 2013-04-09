@@ -1,4 +1,5 @@
 spacedocking-analysis
 =====================
 
-Analysis software for data from the space docking app
+Use the scripts py2box.py and py3box.py with python 2.x or python 3.x
+respectively to analyze space docking data.
