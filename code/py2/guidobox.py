@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import json
 import pdb
 import cv2
 import numpy as np;
@@ -12,22 +11,6 @@ from matplotlib import pyplot as pl;
 # result[i]['image_features']['flat_descriptor_values']
 # result[i]['frames'][j]['features']['features'][fnr]
 # result[i]['frames'][j]['features']['features'][fnr]['descriptor']
-
-def loadData(filename):
-  result = []
-  f = open(filename, 'r')
-  max_samples = 200;
-  sample = 0;
-  for line in f:
-	if(sample < max_samples): 
-		line = line.strip()
-		if (len(line) > 0) and (line[0] != '#'):
-		  result.append(json.loads(line))
-		sample += 1;
-  f.close()
-  
-  return result
-  
 
 def getMatchedFeatures(sample):
 	NN_THRESHOLD = 0.75;
