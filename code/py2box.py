@@ -8,4 +8,16 @@ sys.path += [os.path.join(os.path.realpath("."), os.path.dirname(sys.argv[0]), p
 
 from readdata import *
 from clustering import *
-from guidobox import *
+
+importedBox = True
+if len(sys.argv) > 1:
+   if sys.argv[1].lower() == 'pkg':
+     from pkgbox import *
+   elif sys.argv[1].lower() == 'guido':
+     from guidobox import *
+   else:
+     print "Warning! unknown box", "'" + sys.argv[1] + "'", "- Falling back to guido"
+     importedBox = False
+if not importedBox:
+  from guidobox import *
+  
