@@ -18,4 +18,3 @@ def loadData(filename, max_samples=None):
   return result
   
 
-
