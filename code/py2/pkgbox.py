@@ -23,7 +23,7 @@ def matchDescriptors(desc, descList, listKeyFunction=lambda x: x, distanceFuncti
   
   return (distances[0][1], distances[0][0] / distances[1][0], distances[0][0], distances[1][0]) 
 
-def bestFirstMatcher(descriptors1, descriptors2, distanceFunction=dot, differenceFactorThreshold=0.33):
+def bestFirstMatcher(descriptors1, descriptors2, maxMatches=1, distanceFunction=dot, differenceFactorThreshold=0.33):
   """
     Horrible version of a best first matcher... will not find the best among all pairs
     but only the best match between stimuli sequentially... fast but sloppy
@@ -38,6 +38,7 @@ def bestFirstMatcher(descriptors1, descriptors2, distanceFunction=dot, differenc
     def __init__(self, i, desc):
       self.index = i
       self.desc = desc
+      self.matches = 0
   
   descriptors2 = [CompareDescriptor(i, d) for i, d in enumerate(descriptors2)]
   
@@ -46,7 +47,10 @@ def bestFirstMatcher(descriptors1, descriptors2, distanceFunction=dot, differenc
     matchedBestDistanceInfo = matchDescriptors(desc1, descriptors2, listKeyFunction=lambda x: x.desc, distanceFunction=distanceFunction)
     if matchedBestDistanceInfo[1] < differenceFactorThreshold:
       # Add matched pair and remove old descriptor2 (best first match, no feature is matched twice)
-      result_pairs.append((desc1_i, descriptors2.pop(matchedBestDistanceInfo[0]).index))
+      result_pairs.append((desc1_i, descriptors2[matchedBestDistanceInfo[0]].index))
+      descriptors2[matchedBestDistanceInfo[0]].matches += 1
+      if descriptors2[matchedBestDistanceInfo[0]].matches >= maxMatches:
+        descriptors2.pop(matchedBestDistanceInfo[0])
     else:
       pass # No conclusive data for result pair
 
@@ -67,8 +71,12 @@ import readdata
 def matchImageWithData():
   data = readdata.loadData("data_GDC/output_GDC.txt")
   img = cvLoadImage("data_GDC/IMG_1063.JPG")
-  img_features = extractSURFfeaturesFromImage(img)
-
+  img_dimensions = [len(img[0]), len(img)]
+  img = cv2.resize(img, (640, 640 * img_dimensions[1] / img_dimensions[0]))
+  img_features = extractSURFfeaturesFromImage(img)#, nOctaves=16, nOctaveLayers=4)
+  img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # Make a "normal" RGB image
+  img_dimensions = [len(img[0]), len(img)]
+  
   print "Number of image features:", len(img_features)
 
   for sample_i, sample in enumerate(data):
@@ -80,20 +88,65 @@ def matchImageWithData():
       for feature in frame["features"]["features"]:
         frame_desc.append(array(feature["descriptor"]))
 
-      distanceFunction = lambda x, y: 1.001 - dot(x, y)
-      matchingPairs = bestFirstMatcher([x[1] for x in img_features], frame_desc, distanceFunction=distanceFunction, differenceFactorThreshold=0.5)
+      distanceFunction = lambda x, y: arccos(dot(x, y) / norm(x) / norm(y))
+      matchingPairs = bestFirstMatcher([x[1] for x in img_features], frame_desc, maxMatches=1, distanceFunction=distanceFunction, differenceFactorThreshold=0.9)
       
-      if len(matchingPairs) > 0:
-        fit = sum([distanceFunction(img_features[i][1], frame_desc[j]) for i, j in matchingPairs]) / len(matchingPairs)
-      else:
-        fit = None
-      
-      print "Average fit for frame is:", fit
+      fit = None
       print "Matched points:", len(matchingPairs)
       
+      if len(matchingPairs) >= 5:
+        src_points = array([list(img_features[i][0][0]) for i, j in matchingPairs])
+        dest_points = array([[frame["features"]["features"][j]["x"], frame["features"]["features"][j]["y"]] for i, j in matchingPairs])
+
+        homographyMat = cv.CreateMat(3, 3, cv.CV_32F)
+        mask = cv.CreateMat(len(matchingPairs), 1, cv.CV_8U)
+        cv.FindHomography(cv.fromarray(dest_points), cv.fromarray(src_points), homographyMat, method=cv.CV_RANSAC, ransacReprojThreshold=max(img_dimensions[0], img_dimensions[1]) * 0.1, status=mask)
+        homographyMat = matrix(homographyMat)
+        mask = array(matrix(mask).T)[0]
+
+        print "Filtered matched points:", sum(mask)
+        if sum(mask) < 5:
+          print "(Not enough points contribute to the homography for a succesful matching)"
+        else:
+          matchFigure = figure()
+          matchFigure.suptitle("Sample " + str(sample_i + 1) + " Frame " + str(frame_i + 1))
+          matchPlot = matchFigure.add_subplot(1, 1, 1)
+          
+          matchPlot.hold(True)
+          
+          matchPlot.imshow(img)
+          
+          if len(matchingPairs) > 0:
+            fit = sum([distanceFunction(img_features[i][1], frame_desc[j]) for i, j in matchingPairs]) / len(matchingPairs)
+            
+          homo_dest_points = [array((homographyMat * vstack((matrix(p).T, [1]))).T)[0] for p in dest_points]
+          homo_dest_points = [p[:2] / p[2] for p in homo_dest_points]
+          
+          print "distance without homography =", sum([norm(i - j) for i, j in zip(src_points, dest_points)])
+          print "distance with homography    =", sum([norm(i - j) for i, j in zip(src_points, homo_dest_points)])
+          
+          print "Geometric match:",float(sum(mask)) / float(len(mask))
+        
+          matchFigure.show()
+          
+          for sp, dp, m in zip(src_points, homo_dest_points, mask):
+            if m == 1:
+              matchPlot.plot([sp[0], dp[0]], [sp[1], dp[1]], '-m')
+              matchPlot.plot([dp[0]], [dp[1]], 'om')
+              matchPlot.plot([sp[0]], [sp[1]], 'xm')
+      
+      print "Average fit for frame is:", fit
+
       if not fit is None:
         averageFitHistory.append(fit)
-    print "Average best fit:", sum(averageFitHistory) / len(averageFitHistory)
+
+    print "Average best fit:", 
+    if len(averageFitHistory) == 0:
+      print None
+    else:
+      print sum(averageFitHistory) / len(averageFitHistory)
+    
+  show()
 
 matchImageWithData()
 
