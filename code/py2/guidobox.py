@@ -306,9 +306,11 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 			sam += 1;
 		imn += 1;
 	
-	pdb.set_trace();
+	np.savetxt('Distances.txt', Distances);
+	np.savetxt('Matches.txt', Matches);
+	
 	colors = [(1,0,0), (0,1,0), (0,0,1)];
 	pl.figure();
 	pl.hold = True;
 	for sam in range(n_samples):
-		pl.plot(Distances[:][sam], color=colors[mod(sam, 3)]);
+		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
