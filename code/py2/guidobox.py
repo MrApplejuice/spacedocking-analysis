@@ -194,20 +194,24 @@ def extractSURFfeaturesFromImage(image_name, IM_RESIZE=False, W=640, H=360):
 
 
 
-def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", data_name="output_GDC.txt", VIDEO = True, histogram_sizes = False):
+def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", data_name="output_GDC.txt", DATABASE = True, VIDEO = True, histogram_sizes = False):
 	
 	# the data will serve as a database for matching with the image(s):
 
-	# read the data:
-	result = loadData(test_dir + "/" + data_name);
+	if(DATABASE):
+		# read the data from the database:
+		result = loadData(test_dir + "/" + data_name);
+		# iterate over the data:
+		n_samples = len(result);
+	else:
+		# get data from an image:
+		(kp_data, desc_data, im2_data, im_data) = extractSURFfeaturesFromImage(test_dir + "/" + data_name, IM_RESIZE=True);
+		result = [desc_data];
+		n_samples = 1;
 
 	# definition of a match:
 	NN_THRESHOLD = 0.75;
 	
-	# iterate over the data:
-	n_samples = len(result);
-
-
 	if(not(VIDEO)):
 		# target is a single image:
 		image_names = [test_dir + "/" + target_name];
@@ -231,7 +235,7 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		else:
 			image_name = test_dir + "/" + "/" + iname;
 			
-		(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name);
+		(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name, IM_RESIZE=True);
 		
 		n_features_image = len(descriptors);
 		# print 'number of features in image: %d' % n_features_image
@@ -244,8 +248,11 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		
 		sam = 0;
 		for sample in result:
-			# number of frames in sample:
-			n_frames = len(sample['frames']);
+			if(DATABASE):
+				# number of frames in sample:
+				n_frames = len(sample['frames']);
+			else:
+				n_frames = 1;
 			
 			print 'Sample %d' % sam;
 			
@@ -253,12 +260,15 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 			
 				n_matches = 0;
 			
-				# define current frame:
-				frame = sample['frames'][fr];
-				n_features_frame = len(frame['features']['features']);
-				# print 'number of features in frame %d = %d' % (fr, n_features_frame); 
+				if(DATABASE):
+					# define current frame:
+					frame = sample['frames'][fr];
+					n_features_frame = len(frame['features']['features']);
+					# print 'number of features in frame %d = %d' % (fr, n_features_frame); 
+				else:
+					n_features_frame = len(sample);
 
-				if(histogram_sizes):
+				if(histogram_sizes and DATABASE):
 					# compare descriptor magnitude with the ones from the image:
 					descriptor_magnitudes_frame = np.array([0.0] * n_features_frame);
 					for ff in range(n_features_frame):
@@ -278,9 +288,10 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 					# determine the distances to the features in the frame:
 					distances = np.array([0.0] * n_features_frame);
 					for ft2 in range(n_features_frame):
-						#pdb.set_trace();
-						distances[ft2] = np.linalg.norm(np.array(descriptors[ft1]) - np.array(frame['features']['features'][ft2]['descriptor']));
-						# print 'distances[%d] = %f' % (ft2, distances[ft2]);
+						if(DATABASE):
+							distances[ft2] = np.linalg.norm(np.array(descriptors[ft1]) - np.array(frame['features']['features'][ft2]['descriptor']));
+						else:
+							distances[ft2] = np.linalg.norm(np.array(descriptors[ft1]) - np.array(sample[ft2]));
 				
 					# sort the distances:
 					sindices = np.argsort(distances);
