@@ -70,9 +70,10 @@ import readdata
 
 def matchImageWithData():
   data = readdata.loadData("data_GDC/output_GDC.txt")
-  img = cvLoadImage("data_GDC/IMG_1063.JPG")
+  img = cvLoadImage("data_GDC/IMG_1068.JPG")
   img_dimensions = [len(img[0]), len(img)]
   img = cv2.resize(img, (640, 640 * img_dimensions[1] / img_dimensions[0]))
+  img = cv2.flip(img, flipCode=0)
   img_features = extractSURFfeaturesFromImage(img)#, nOctaves=16, nOctaveLayers=4)
   img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # Make a "normal" RGB image
   img_dimensions = [len(img[0]), len(img)]
@@ -178,3 +179,55 @@ def autoMapDataSequence():
   show()
 
 #autoMapDataSequence()
+
+#############################
+# Test - Compare descriptors
+#############################
+
+def testCompareDescriptors():
+  def showDescriptorDifferences(title, desc1, desc2):
+    #distanceFunction = lambda x, y: arccos(dot(x, y) / norm(x) / norm(y))
+    distanceFunction = euclid
+    distances = array([[distanceFunction(img_f, frm_f) for frm_f in desc2] for img_f in desc1])
+
+    fig = figure()
+    fig.suptitle(title)
+    
+    plot = fig.add_subplot(1, 1, 1)
+    
+    plot.hold(True)
+    for i in range(min(5, distances.shape[0])):
+      hist, binEdges = histogram(distances[i], bins=20)
+      binCenters = (binEdges[:-1] + binEdges[1:]) / 2.0
+      plot.plot(binCenters, hist, '-')
+      plot.plot(binCenters, hist, 'x')
+    
+    fig.show()
+  
+  data = readdata.loadData("data_GDC/output_GDC.txt")
+
+  img = cvLoadImage("data_GDC/IMG_1067.JPG")
+  img_dimensions = [len(img[0]), len(img)]
+  img = cv2.resize(img, (640, 640 * img_dimensions[1] / img_dimensions[0]))
+  img_features = extractSURFfeaturesFromImage(img)# nOctaves=16, nOctaveLayers=4)
+
+  img2 = cvLoadImage("data_GDC/IMG_1068.JPG")
+  img2_dimensions = [len(img2[0]), len(img2)]
+  img2 = cv2.resize(img2, (640, 640 * img2_dimensions[1] / img2_dimensions[0]))
+  img2_features = extractSURFfeaturesFromImage(img2)# nOctaves=16, nOctaveLayers=4)
+
+  showDescriptorDifferences("Img 1 -> Img 2", [f[1] for f in img_features], [f[1] for f in img2_features])
+  
+  for sample_i, sample in enumerate(data):
+    averageFitHistory = []
+    print "Sample", sample_i + 1
+    for frame_i, frame in enumerate(sample['frames']):
+      frame_desc = []
+      print "Frame", frame_i + 1
+      for feature in frame["features"]["features"]:
+        frame_desc.append(array(feature["descriptor"]))
+        
+      showDescriptorDifferences("Sample %d - Frame %d" % (sample_i + 1, frame_i + 1), [f[1] for f in img_features], frame_desc)
+
+
+#testCompareDescriptors()
