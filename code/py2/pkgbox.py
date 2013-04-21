@@ -1,5 +1,8 @@
 from pylab import *
+from mpl_toolkits.axes_grid import AxesGrid
+from matplotlib.transforms import Affine2D
 import cv, cv2
+import readdata
 
 def cvLoadImage(filename):
   im2 = cv2.imread(filename);
@@ -7,8 +10,15 @@ def cvLoadImage(filename):
 
 def extractSURFfeaturesFromImage(image, hessianThreshold=2500, nOctaves=4, nOctaveLayers=2):
   im = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-  keypoints, descriptors = cv.ExtractSURF(cv.fromarray(im), None, cv.CreateMemStorage(), (1, hessianThreshold, nOctaves, nOctaveLayers))
-  return zip(keypoints, descriptors)
+  
+  #Legacy version only comput
+  #keypoints, descriptors = cv.ExtractSURF(cv.fromarray(im), None, cv.CreateMemStorage(), (1, hessianThreshold, nOctaves, nOctaveLayers))
+  #Result style for keypoints: 
+  #  (xy-tuple, class_id, size, angle, hessianResponse)
+  
+  surfDetector = cv2.SURF(hessianThreshold, nOctaves, nOctaveLayers, True, False)
+  keypoints, descriptors = surfDetector.detectAndCompute(im, None)
+  return zip([(k.pt, k.class_id, k.size, k.angle, k.response) for k in keypoints], descriptors)
 
 def normDescriptor(descriptor):
   descriptor = array(descriptor)
@@ -62,7 +72,14 @@ def bestFirstMatcher(descriptors1, descriptors2, maxMatches=1, distanceFunction=
 def euclid(x, y):
   return norm(array(x) - array(y))
 
-import readdata
+def dbFeaturesToData(features):
+  return [(((f['x'], f['y']), f['size'], f['angle']), f['descriptor']) for f in features]
+  
+def selectDbSample(data, sample, frame=None):
+  if not frame is None:
+    return selectDbSample(data, sample)['frames'][frame]
+  else:
+    return data[sample]
 
 ###################################################################
 # Test - Trying to match data aginst features computed from images
@@ -70,10 +87,10 @@ import readdata
 
 def matchImageWithData():
   data = readdata.loadData("data_GDC/output_GDC.txt")
-  img = cvLoadImage("data_GDC/IMG_1068.JPG")
+  img = cvLoadImage("data_GDC/IMG_1062.JPG")
   img_dimensions = [len(img[0]), len(img)]
   img = cv2.resize(img, (640, 640 * img_dimensions[1] / img_dimensions[0]))
-  img = cv2.flip(img, flipCode=0)
+  #img = cv2.flip(img, flipCode=0)
   img_features = extractSURFfeaturesFromImage(img)#, nOctaves=16, nOctaveLayers=4)
   img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # Make a "normal" RGB image
   img_dimensions = [len(img[0]), len(img)]
@@ -90,7 +107,7 @@ def matchImageWithData():
         frame_desc.append(array(feature["descriptor"]))
 
       distanceFunction = lambda x, y: arccos(dot(x, y) / norm(x) / norm(y))
-      matchingPairs = bestFirstMatcher([x[1] for x in img_features], frame_desc, maxMatches=1, distanceFunction=distanceFunction, differenceFactorThreshold=0.9)
+      matchingPairs = bestFirstMatcher([x[1] for x in img_features], frame_desc, maxMatches=1, distanceFunction=distanceFunction, differenceFactorThreshold=0.85)
       
       fit = None
       print "Matched points:", len(matchingPairs)
@@ -149,7 +166,7 @@ def matchImageWithData():
     
   show()
 
-matchImageWithData()
+#matchImageWithData()
 
 #####################################################
 # Test - Automapping of features in a image sequence
@@ -194,13 +211,24 @@ def testCompareDescriptors():
     fig.suptitle(title)
     
     plot = fig.add_subplot(1, 1, 1)
-    
     plot.hold(True)
+
     for i in range(min(5, distances.shape[0])):
       hist, binEdges = histogram(distances[i], bins=20)
       binCenters = (binEdges[:-1] + binEdges[1:]) / 2.0
       plot.plot(binCenters, hist, '-')
       plot.plot(binCenters, hist, 'x')
+    
+    fig.show()
+    
+  def showMaxDescriptorCorrelation(title, desc1, desc2):
+    fig = figure()
+    fig.suptitle(title)
+    
+    plot = fig.add_subplot(1, 1, 1)
+    plot.hold(True)
+    
+    plot.plot(desc1[0], desc2[0], ',k')
     
     fig.show()
   
@@ -216,7 +244,8 @@ def testCompareDescriptors():
   img2 = cv2.resize(img2, (640, 640 * img2_dimensions[1] / img2_dimensions[0]))
   img2_features = extractSURFfeaturesFromImage(img2)# nOctaves=16, nOctaveLayers=4)
 
-  showDescriptorDifferences("Img 1 -> Img 2", [f[1] for f in img_features], [f[1] for f in img2_features])
+#  showDescriptorDifferences("Img 1 -> Img 2", [f[1] for f in img_features], [f[1] for f in img2_features])
+  showMaxDescriptorCorrelation("Img 1 -> Img 2", [f[1] for f in img_features], [f[1] for f in img2_features])
   
   for sample_i, sample in enumerate(data):
     averageFitHistory = []
@@ -226,8 +255,129 @@ def testCompareDescriptors():
       print "Frame", frame_i + 1
       for feature in frame["features"]["features"]:
         frame_desc.append(array(feature["descriptor"]))
-        
-      showDescriptorDifferences("Sample %d - Frame %d" % (sample_i + 1, frame_i + 1), [f[1] for f in img_features], frame_desc)
+       
+      showMaxDescriptorCorrelation("Sample %d - Frame %d" % (sample_i + 1, frame_i + 1), [f[1] for f in img_features], frame_desc)
+      #showDescriptorDifferences("Sample %d - Frame %d" % (sample_i + 1, frame_i + 1), [f[1] for f in img_features], frame_desc)
 
 
 #testCompareDescriptors()
+
+############################################
+# Match features from image or feature data
+# Uses data1 as reference and tries to 
+# overlay data2
+############################################
+
+def matchData(data1, data2, showOnlyMatchedFeatures=True):
+  def genFeatures(data, hardLimit=None):
+    if type(data) is str:
+      img = cvLoadImage(data)
+      img_dimensions = [len(img[0]), len(img)]
+      img = cv2.resize(img, (640, 640 * img_dimensions[1] / img_dimensions[0]))
+      img_features = extractSURFfeaturesFromImage(img, nOctaves=4, nOctaveLayers=2)
+      img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # Make a "normal" RGB image
+      img_dimensions = [len(img[0]), len(img)]
+      
+      print "Features in", data, ": ", len(img_features)
+
+      # Result: ((position, size, rotation), image-data)      
+      return ([((f[0][0], f[0][2], f[0][3]), f[1]) for i, f in enumerate(img_features) if (i < hardLimit) or (hardLimit is None)], (img_dimensions, img))
+    else:
+      return (data, None)
+    
+  hardLimit = None
+  data1 = genFeatures(data1, hardLimit=hardLimit)
+  data2 = genFeatures(data2, hardLimit=hardLimit)
+  
+  # Calculate all distances between features
+  print "Calculating distances..."
+  distances = [[None for y in data2[0]] for x in data1[0]]
+  calcDistance = lambda x, y: arccos(dot(array(x), array(y)) / norm(array(x)) / norm(array(y)))
+  #calcDistance = euclid
+  for i, f1 in enumerate(data1[0]):
+    d1 = f1[1]
+    for j, f2 in enumerate(data2[0]):
+      d2 = f2[1]
+      distances[i][j] = calcDistance(d1, d2)
+  
+  # Find all matchings under a given threshold
+  print "Calculating matches..."
+  THRESHOLD = 25 * pi / 180.0
+  matches = [[i for i, d in enumerate(row) if d < THRESHOLD] for row in distances]
+  
+  # Draw match plot
+  imagePairOffset = (700, 0)
+  def drawFeature(plot, fpos, size, rotation, initTransform=Affine2D(), color='y'):
+    vertices = ((0, 0), (0, 1), (1, 1), (-1, 1), (-1, -1), (1, -1))
+    drawPairs = [(0, 1), (2, 3), (3, 4), (4, 5), (5, 2)]
+    transform = Affine2D().scale(size / 2.0).rotate_deg(rotation).translate(*fpos)
+    vertices = initTransform.transform(transform.transform(vertices))
+
+    for i, j in drawPairs:
+      plot.plot((vertices[i][0], vertices[j][0]), (vertices[i][1], vertices[j][1]), '-' + color)
+  
+  def genMatchPairs(matches):
+    result = []
+    for i, m in enumerate(matches):
+      result += [(i, j) for j in m]
+    return result
+
+  def showMatchPlot(data1, data2, matches):
+    matchFigure = figure(figsize=figaspect(0.5))
+    matchFigure.suptitle("Image - image matches")
+    
+    ag = AxesGrid(matchFigure, nrows_ncols=[1, 1], rect=[0.05, 0.05, 0.9, 0.8])
+    #matchPlot = matchFigure.add_subplot(1, 1, 1)
+    matchPlot = ag[0]
+    matchPlot.hold(True)
+
+    # Draw plots next to each other
+    ymax = 100
+    if not data1[1] is None:
+      matchPlot.imshow(data1[1][1], extent=[0, data1[1][0][0], data1[1][0][1], 0])
+      ymax = max(ymax, data1[1][0][1])
+    if not data2[1] is None:
+      matchPlot.imshow(data2[1][1], extent=[imagePairOffset[0], imagePairOffset[0] + data2[1][0][0], imagePairOffset[1] + data2[1][0][1], imagePairOffset[1]])
+      ymax = max(ymax, data2[1][0][1])
+
+    # Draw features matchings
+    featurePairs = genMatchPairs(matches)
+    print len(featurePairs), "possible matches"
+
+    if not showOnlyMatchedFeatures:
+      # Draw all features
+      for f in map(lambda x: x[0], data1[0]):
+        drawFeature(matchPlot, f[0], f[1], f[2], initTransform=Affine2D())
+      for f in map(lambda x: x[0], data2[0]):
+        drawFeature(matchPlot, f[0], f[1], f[2], initTransform=Affine2D().translate(*imagePairOffset))
+    else:
+      # Draw only features that are in matching
+      matchedItems = map(lambda x: x[0], featurePairs)
+      for i, f in filter(lambda x: x[0] in matchedItems, enumerate(map(lambda x: x[0], data1[0]))):
+        drawFeature(matchPlot, f[0], f[1], f[2], initTransform=Affine2D())
+      matchedItems = map(lambda x: x[1], featurePairs)
+      for i, f in filter(lambda x: x[0] in matchedItems, enumerate(map(lambda x: x[0], data2[0]))):
+        drawFeature(matchPlot, f[0], f[1], f[2], initTransform=Affine2D().translate(*imagePairOffset))
+    
+    for i, j in featurePairs:
+      d1f = data1[0][i][0]
+      d2f = data2[0][j][0]
+      matchPlot.plot([d1f[0][0], d2f[0][0] + imagePairOffset[0]], [d1f[0][1], d2f[0][1] + imagePairOffset[1]], ':y')
+
+    matchPlot.set_xlim(0, imagePairOffset[0] * 2);
+    matchPlot.set_ylim(ymax, 0);
+
+    matchPlot.set_xticklabels([])
+
+    matchFigure.show()
+    
+  showMatchPlot(data1, data2, matches)
+
+def doStuff():  
+  data = readdata.loadData("data_GDC/output_GDC.txt")
+  selectedSample = selectDbSample(data, 0, 1);
+  sampleData = dbFeaturesToData(selectedSample['features']['features'])
+
+  #matchData("data_PKG/feature-rich-scenes/window-far.jpg", "data_PKG/feature-rich-scenes/window-close.jpg")   
+  #matchData("data_GDC/IMG_1068.JPG", "data_GDC/IMG_1069.JPG")
+  matchData(sampleData, "data_GDC/IMG_1067.JPG", showOnlyMatchedFeatures=True)
