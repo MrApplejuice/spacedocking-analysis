@@ -267,6 +267,15 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 	coord = ginput(1);
 	
 	while len(coord) > 0:
+		
+		pl.close();
+		matchFigure = figure(figsize=figaspect(0.5))
+		matchFigure.suptitle("Image - image matches")
+		ag = AxesGrid(matchFigure, nrows_ncols=[1, 1], rect=[0.05, 0.05, 0.9, 0.8])
+		matchPlot = ag[0];
+		matchPlot.hold(True)
+		matchPlot.imshow(large_im);
+	
 		# get closest point:
 		if(coord[0][0] > W):
 			# database feature:
@@ -279,6 +288,8 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 				distances[kp] = np.linalg.norm(coord - np.array(keypoints_db[kp].pt));
 			closest_ind = np.argmin(distances);
 			pt = (keypoints_db[closest_ind].pt[0]+W, keypoints_db[closest_ind].pt[1]);
+			
+			plotSURFFeatures(keypoints_db, matchPlot, offset = W);
 			drawFeature(matchPlot, pt, keypoints_db[closest_ind].size, keypoints_db[closest_ind].angle, col='r');
 			
 			# redraw image features according to distance:
@@ -291,6 +302,9 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 					drawFeature(matchPlot, pt, keypoints[kp].size, keypoints[kp].angle, col=col2);
 				else:
 					drawFeature(matchPlot, pt, keypoints[kp].size, keypoints[kp].angle, col='g');
+					
+			pt = (keypoints[closest_ind].pt[0], keypoints[closest_ind].pt[1]);
+			drawFeature(matchPlot, pt, keypoints[closest_ind].size, keypoints[closest_ind].angle, col='g');
 		else:
 			# image feature:
 			x = coord[0][0];
@@ -302,6 +316,8 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 				distances[kp] = np.linalg.norm(coord - np.array(keypoints[kp].pt));
 			closest_ind = np.argmin(distances);
 			pt = (keypoints[closest_ind].pt[0], keypoints[closest_ind].pt[1]);
+			
+			plotSURFFeatures(keypoints, matchPlot);
 			drawFeature(matchPlot, pt, keypoints[closest_ind].size, keypoints[closest_ind].angle, col='r');
 			
 			# redraw image features according to distance:
@@ -314,16 +330,18 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 					drawFeature(matchPlot, pt, keypoints_db[kp].size, keypoints_db[kp].angle, col=col2);
 				else:
 					drawFeature(matchPlot, pt, keypoints_db[kp].size, keypoints_db[kp].angle, col='g');
+			
+			pt = (keypoints_db[closest_ind].pt[0]+W, keypoints_db[closest_indpt[1]);
+			drawFeature(matchPlot, pt, keypoints_db[closest_ind].size, keypoints_db[closest_ind].angle, col='g');
 
-		matchPlot.draw();
-		matchFigure.canvas.draw();
+		#matchPlot.draw();
+		#matchFigure.canvas.draw();
 		matchFigure.show();
 		
-		pdb.set_trace();
 		# get new point:
 		coord = ginput(1);
 		
-	pdb.set_trace();
+	pl.close();
 
 
 
