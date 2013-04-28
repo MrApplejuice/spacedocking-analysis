@@ -265,6 +265,7 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 	matchFigure.show()
 	#cid = matchFigure.canvas.mpl_connect('button_press_event', onclick)
 	coord = ginput(1);
+	
 	while len(coord) > 0:
 		# get closest point:
 		if(coord[0][0] > W):
@@ -278,18 +279,18 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 				distances[kp] = np.linalg.norm(coord - np.array(keypoints_db[kp].pt));
 			closest_ind = np.argmin(distances);
 			pt = (keypoints_db[closest_ind].pt[0]+W, keypoints_db[closest_ind].pt[1]);
-			drawFeature(matchPlot, pt, keypoints[closest_ind].size, keypoints[closest_ind].angle, col='r');
+			drawFeature(matchPlot, pt, keypoints_db[closest_ind].size, keypoints_db[closest_ind].angle, col='r');
 			
 			# redraw image features according to distance:
-			#min_dist = np.min(Distances[:, closest_ind]);
-			#max_dist = np.max(Distances[:, closest_ind] - min_dist);
-			#for kp in range(n_im):
-			#	pt = (keypoints[kp].pt[0], keypoints[kp].pt[1]);
-			#	col2 = (((Distances[kp, closest_ind] - min_dist)/max_dist), ((Distances[kp, closest_ind] - min_dist)/max_dist), 0);
-			#	drawFeature(matchPlot, pt, keypoints[kp].size, keypoints[kp].angle, col=col2);
-			#
-			
-
+			min_dist = np.min(Distances[:, closest_ind]);
+			max_dist = np.max(Distances[:, closest_ind] - min_dist);
+			for kp in range(n_im):
+				pt = (keypoints[kp].pt[0], keypoints[kp].pt[1]);
+				if(kp != closest_ind):
+					col2 = (((Distances[kp, closest_ind] - min_dist)/max_dist), ((Distances[kp, closest_ind] - min_dist)/max_dist), 0);
+					drawFeature(matchPlot, pt, keypoints[kp].size, keypoints[kp].angle, col=col2);
+				else:
+					drawFeature(matchPlot, pt, keypoints[kp].size, keypoints[kp].angle, col='g');
 		else:
 			# image feature:
 			x = coord[0][0];
@@ -302,9 +303,22 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 			closest_ind = np.argmin(distances);
 			pt = (keypoints[closest_ind].pt[0], keypoints[closest_ind].pt[1]);
 			drawFeature(matchPlot, pt, keypoints[closest_ind].size, keypoints[closest_ind].angle, col='r');
+			
+			# redraw image features according to distance:
+			min_dist = np.min(Distances[closest_ind, :]);
+			max_dist = np.max(Distances[closest_ind, :] - min_dist);
+			for kp in range(n_db):
+				pt = (keypoints_db[kp].pt[0]+W, keypoints_db[kp].pt[1]);
+				if(kp != closest_ind):
+					col2 = (((Distances[closest_ind, kp] - min_dist)/max_dist), ((Distances[closest_ind, kp] - min_dist)/max_dist), 0);
+					drawFeature(matchPlot, pt, keypoints_db[kp].size, keypoints_db[kp].angle, col=col2);
+				else:
+					drawFeature(matchPlot, pt, keypoints_db[kp].size, keypoints_db[kp].angle, col='g');
 
-
-		matchFigure.show()		
+		matchPlot.draw();
+		matchFigure.canvas.draw();
+		matchFigure.show();
+		
 		pdb.set_trace();
 		# get new point:
 		coord = ginput(1);
