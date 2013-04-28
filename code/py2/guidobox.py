@@ -331,7 +331,7 @@ def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptor
 				else:
 					drawFeature(matchPlot, pt, keypoints_db[kp].size, keypoints_db[kp].angle, col='g');
 			
-			pt = (keypoints_db[closest_ind].pt[0]+W, keypoints_db[closest_indpt[1]);
+			pt = (keypoints_db[closest_ind].pt[0]+W, keypoints_db[closest_ind].pt[1]);
 			drawFeature(matchPlot, pt, keypoints_db[closest_ind].size, keypoints_db[closest_ind].angle, col='g');
 
 		#matchPlot.draw();
