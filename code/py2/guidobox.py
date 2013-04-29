@@ -167,6 +167,21 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	#cv2.namedWindow("img2", cv2.cv.CV_WINDOW_NORMAL)
 	#cv2.imshow('img2',img2)
 
+def investigateResponseValues(image_name):
+	# extract keypoint features:
+	(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name, IM_RESIZE=True);
+	
+	# put the response values in an array:
+	n_keypoints = len(keypoints);
+	responses = np.array([0.0] * n_keypoints);
+	for kp in range(n_keypoints):
+		responses[kp] = keypoints[kp].response;
+		
+	# show a histogram of the responses:
+	pl.figure();
+	pl.hist(responses, 30);
+	pl.title('Response values ' + image_name);
+
 def extractSURFfeaturesFromImage(image_name, IM_RESIZE=False, W=640, H=360):
 	im2 = cv2.imread(image_name);
 	
@@ -480,3 +495,76 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 	pl.hold = True;
 	for sam in range(n_samples):
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
+		
+		
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt"):
+	# read the data from the database:
+	result = loadData(test_dir + "/" + data_name);
+	# iterate over the data:
+	n_samples = len(result);
+	n_frames = size(result[0]['frames']);
+	
+	# statistics to gather:
+	n_data_points = n_samples * n_frames;
+	distances_to_marker = np.array([0.0] * n_data_points);
+	X = np.array([0.0] * n_data_points);
+	Y = np.array([0.0] * n_data_points);
+	Z = np.array([0.0] * n_data_points);
+	speeds = np.array([0.0] * n_data_points);
+	#VX = np.array([0.0] * n_data_points);
+	#VY = np.array([0.0] * n_data_points);
+	#VZ = np.array([0.0] * n_data_points);
+	responses = [];
+	sizes = [];
+	# loop over all samples:
+	dp = 0;
+	
+	for sample in result:
+		for f in range(n_frames):
+			
+			# get frame:
+			frame = sample['frames'][f];
+		
+			# get distance to marker:
+			position = frame['position'];
+			X[dp] = position[0];
+			Y[dp] = position[1];
+			Z[dp] = position[2];
+			distances_to_marker[dp] = np.linalg.norm(position);
+			
+			# get speed:
+			velocities = frame['velocities'];
+			speeds[dp] = np.linalg.norm(velocities) / 1000.0;
+			
+			# get statistics at feature level:
+			# n_features = len(frame['features']['features']);
+			for ft in frame['features']['features']:
+				responses.append(ft['response']);
+				sizes.append(ft['size']);
+			
+			dp += 1;
+	
+	# show a histogram of the distances:
+	pl.figure();
+	pl.hist(distances_to_marker, 60);
+	pl.title('Distances at which photos are taken');
+	
+	pl.figure();
+	pl.plot(X, Y, 'x');
+	pl.title('Photo positions');
+	
+	# show a histogram of the speeds:
+	pl.figure();
+	pl.hist(speeds, 60);
+	pl.title('Speeds which photos are taken');
+	
+	# show a histogram of the feature response values:
+	pl.figure();
+	pl.hist(np.array(responses), 60);
+	pl.title('Feature response value distribution in database');
+	
+	# show a histogram of the feature sizes:
+	pl.figure();
+	pl.hist(np.array(sizes), 60);
+	pl.title('Feature size distribution in database');
+	
