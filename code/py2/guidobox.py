@@ -7,6 +7,8 @@ import pdb
 import cv2
 import numpy as np;
 from matplotlib import pyplot as pl;
+from matplotlib.transforms import Affine2D
+from mpl_toolkits.axes_grid import AxesGrid
 
 # size(result) -> total number of samples
 # size(result[i]['frames']) == 5
@@ -165,6 +167,21 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	#cv2.namedWindow("img2", cv2.cv.CV_WINDOW_NORMAL)
 	#cv2.imshow('img2',img2)
 
+def investigateResponseValues(image_name):
+	# extract keypoint features:
+	(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name, IM_RESIZE=True);
+	
+	# put the response values in an array:
+	n_keypoints = len(keypoints);
+	responses = np.array([0.0] * n_keypoints);
+	for kp in range(n_keypoints):
+		responses[kp] = keypoints[kp].response;
+		
+	# show a histogram of the responses:
+	pl.figure();
+	pl.hist(responses, 30);
+	pl.title('Response values ' + image_name);
+
 def extractSURFfeaturesFromImage(image_name, IM_RESIZE=False, W=640, H=360):
 	im2 = cv2.imread(image_name);
 	
@@ -178,36 +195,189 @@ def extractSURFfeaturesFromImage(image_name, IM_RESIZE=False, W=640, H=360):
 	
 	#im = cv2.resize(im, (im.shape[1] / 2, im.shape[0] / 2))
 	
-	surfDetector = cv2.SURF();
-	surfDetector.hessianThreshold = 2500;
-	surfDetector.nOctaves = 4;
-	surfDetector.nOctaveLayers = 2;
-	mask = np.ones(im.shape, dtype=np.uint8)
-	keypoints = surfDetector.detect(im, mask);
+	#surfDetector = cv2.SURF();
+	#surfDetector.hessianThreshold = 2500;
+	#surfDetector.nOctaves = 4;
+	#surfDetector.nOctaveLayers = 2;
+	#mask = np.ones(im.shape, dtype=np.uint8)
+	#keypoints = surfDetector.detect(im, mask);
 	
-	#surfDetector = cv2.FeatureDetector_create("SURF")
-	#keypoints = surfDetector.detect(im)
+	##surfDetector = cv2.FeatureDetector_create("SURF")
+	##keypoints = surfDetector.detect(im)
 	
-	surfDescriptorExtractor = cv2.DescriptorExtractor_create("SURF")
-	(keypoints, descriptors) = surfDescriptorExtractor.compute(im,keypoints)
+	# surfDescriptorExtractor = cv2.DescriptorExtractor_create("SURF")
+	# (keypoints, descriptors) = surfDescriptorExtractor.compute(im,keypoints)
+	
+	hessianThreshold = 2500;
+	nOctaves = 4;
+	nOctaveLayers = 2;
+	surfDetector = cv2.SURF(hessianThreshold, nOctaves, nOctaveLayers, True, False)
+	keypoints, descriptors = surfDetector.detectAndCompute(im, None)
+	
 	return (keypoints, descriptors, im2, im);
 
+def transformFeaturesToCVFormat(frame_features, H=360):
+	kp_list = [];
+	desc_list = [];
+	for f in frame_features:
+		# cv2.KeyPoint([x, y, _size[, _angle[, _response[, _octave[, _class_id]]]]])
+		kp_list.append(cv2.KeyPoint(f['x'], H-f['y'], f['size'], f['angle'], f['response'], f['octave']));
+		desc_list.append(np.array(f['descriptor']))
+		
+	return (kp_list, desc_list);
+
+def drawFeature(plot, fpos, size, rotation, initTransform=Affine2D(), col='y'):
+    vertices = ((0, 0), (0, 1), (1, 1), (-1, 1), (-1, -1), (1, -1))
+    drawPairs = [(0, 1), (2, 3), (3, 4), (4, 5), (5, 2)]
+    transform = Affine2D().scale(size / 2.0).rotate_deg(rotation).translate(*fpos)
+    vertices = initTransform.transform(transform.transform(vertices))
+
+    for i, j in drawPairs:
+      plot.plot((vertices[i][0], vertices[j][0]), (vertices[i][1], vertices[j][1]), color=col)
+
+def plotSURFFeatures(keypoints, plot, offset = 0):
+	for k in keypoints:
+		if(offset == 0):
+			drawFeature(plot, k.pt, k.size, k.angle);
+		else:
+			pt = (k.pt[0]+offset, k.pt[1]);
+			drawFeature(plot, pt, k.size, k.angle);
+
+#def onclick(event):
+#    print 'button=%d, x=%d, y=%d, xdata=%f, ydata=%f'%(
+#        event.button, event.x, event.y, event.xdata, event.ydata)
+
+def investigateFeatureDistances(keypoints, descriptors, keypoints_db, descriptors_db, im):
+
+	n_im = len(keypoints);
+	n_db = len(keypoints_db);
+
+	# make a distance matrix to be used later on:
+	Distances = np.zeros((n_im, n_db));
+	for ft1 in range(n_im):
+		for ft2 in range(n_db):
+			Distances[ft1, ft2] = np.linalg.norm(descriptors[ft1] - descriptors_db[ft2]);
+	
+
+	# make a big image:
+	H = im.shape[0];
+	W = im.shape[1];
+	large_im = 255 * np.ones((H, 2*W, 3), np.uint8);
+	large_im[0:H, 0:W, 0] = im; 
+	large_im[0:H, 0:W, 1] = im; 
+	large_im[0:H, 0:W, 2] = im; 
+	
+	matchFigure = figure(figsize=figaspect(0.5))
+	matchFigure.suptitle("Image - image matches")
+	ag = AxesGrid(matchFigure, nrows_ncols=[1, 1], rect=[0.05, 0.05, 0.9, 0.8])
+	matchPlot = ag[0];
+	matchPlot.hold(True)
+	matchPlot.imshow(large_im);
+		
+	# plot the features with an orientation:
+	plotSURFFeatures(keypoints, matchPlot);
+	plotSURFFeatures(keypoints_db, matchPlot, offset = W);
+	matchFigure.show()
+	#cid = matchFigure.canvas.mpl_connect('button_press_event', onclick)
+	coord = ginput(1);
+	
+	while len(coord) > 0:
+		
+		pl.close();
+		matchFigure = figure(figsize=figaspect(0.5))
+		matchFigure.suptitle("Image - image matches")
+		ag = AxesGrid(matchFigure, nrows_ncols=[1, 1], rect=[0.05, 0.05, 0.9, 0.8])
+		matchPlot = ag[0];
+		matchPlot.hold(True)
+		matchPlot.imshow(large_im);
+	
+		# get closest point:
+		if(coord[0][0] > W):
+			# database feature:
+			x = coord[0][0] - float(W);
+			y = coord[0][1];
+			coord = np.array((x,y));
+			# find closest database feature:
+			distances = np.array([0.0]*n_db);
+			for kp in range(n_db):
+				distances[kp] = np.linalg.norm(coord - np.array(keypoints_db[kp].pt));
+			closest_ind = np.argmin(distances);
+			pt = (keypoints_db[closest_ind].pt[0]+W, keypoints_db[closest_ind].pt[1]);
+			
+			plotSURFFeatures(keypoints_db, matchPlot, offset = W);
+			drawFeature(matchPlot, pt, keypoints_db[closest_ind].size, keypoints_db[closest_ind].angle, col='r');
+			
+			# redraw image features according to distance:
+			min_dist = np.min(Distances[:, closest_ind]);
+			max_dist = np.max(Distances[:, closest_ind] - min_dist);
+			for kp in range(n_im):
+				pt = (keypoints[kp].pt[0], keypoints[kp].pt[1]);
+				if(kp != closest_ind):
+					col2 = (((Distances[kp, closest_ind] - min_dist)/max_dist), ((Distances[kp, closest_ind] - min_dist)/max_dist), 0);
+					drawFeature(matchPlot, pt, keypoints[kp].size, keypoints[kp].angle, col=col2);
+				else:
+					drawFeature(matchPlot, pt, keypoints[kp].size, keypoints[kp].angle, col='g');
+					
+			pt = (keypoints[closest_ind].pt[0], keypoints[closest_ind].pt[1]);
+			drawFeature(matchPlot, pt, keypoints[closest_ind].size, keypoints[closest_ind].angle, col='g');
+		else:
+			# image feature:
+			x = coord[0][0];
+			y = coord[0][1];
+			coord = np.array((x,y));
+			# find closest database feature:
+			distances = np.array([0.0]*n_im);
+			for kp in range(n_im):
+				distances[kp] = np.linalg.norm(coord - np.array(keypoints[kp].pt));
+			closest_ind = np.argmin(distances);
+			pt = (keypoints[closest_ind].pt[0], keypoints[closest_ind].pt[1]);
+			
+			plotSURFFeatures(keypoints, matchPlot);
+			drawFeature(matchPlot, pt, keypoints[closest_ind].size, keypoints[closest_ind].angle, col='r');
+			
+			# redraw image features according to distance:
+			min_dist = np.min(Distances[closest_ind, :]);
+			max_dist = np.max(Distances[closest_ind, :] - min_dist);
+			for kp in range(n_db):
+				pt = (keypoints_db[kp].pt[0]+W, keypoints_db[kp].pt[1]);
+				if(kp != closest_ind):
+					col2 = (((Distances[closest_ind, kp] - min_dist)/max_dist), ((Distances[closest_ind, kp] - min_dist)/max_dist), 0);
+					drawFeature(matchPlot, pt, keypoints_db[kp].size, keypoints_db[kp].angle, col=col2);
+				else:
+					drawFeature(matchPlot, pt, keypoints_db[kp].size, keypoints_db[kp].angle, col='g');
+			
+			pt = (keypoints_db[closest_ind].pt[0]+W, keypoints_db[closest_ind].pt[1]);
+			drawFeature(matchPlot, pt, keypoints_db[closest_ind].size, keypoints_db[closest_ind].angle, col='g');
+
+		#matchPlot.draw();
+		#matchFigure.canvas.draw();
+		matchFigure.show();
+		
+		# get new point:
+		coord = ginput(1);
+		
+	pl.close();
 
 
-def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", data_name="output_GDC.txt", VIDEO = True, histogram_sizes = False):
+
+def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", data_name="output_GDC.txt", DATABASE = True, VIDEO = True, histogram_sizes = False, INVESTIGATE_SINGLE_IMAGE=False):
 	
 	# the data will serve as a database for matching with the image(s):
 
-	# read the data:
-	result = loadData(test_dir + "/" + data_name);
+	if(DATABASE):
+		# read the data from the database:
+		result = loadData(test_dir + "/" + data_name);
+		# iterate over the data:
+		n_samples = len(result);
+	else:
+		# get data from an image:
+		(kp_data, desc_data, im2_data, im_data) = extractSURFfeaturesFromImage(test_dir + "/" + data_name, IM_RESIZE=True);
+		result = [desc_data];
+		n_samples = 1;
 
 	# definition of a match:
 	NN_THRESHOLD = 0.75;
 	
-	# iterate over the data:
-	n_samples = len(result);
-
-
 	if(not(VIDEO)):
 		# target is a single image:
 		image_names = [test_dir + "/" + target_name];
@@ -231,7 +401,7 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		else:
 			image_name = test_dir + "/" + "/" + iname;
 			
-		(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name);
+		(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name, IM_RESIZE=True);
 		
 		n_features_image = len(descriptors);
 		# print 'number of features in image: %d' % n_features_image
@@ -244,8 +414,11 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		
 		sam = 0;
 		for sample in result:
-			# number of frames in sample:
-			n_frames = len(sample['frames']);
+			if(DATABASE):
+				# number of frames in sample:
+				n_frames = len(sample['frames']);
+			else:
+				n_frames = 1;
 			
 			print 'Sample %d' % sam;
 			
@@ -253,12 +426,19 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 			
 				n_matches = 0;
 			
-				# define current frame:
-				frame = sample['frames'][fr];
-				n_features_frame = len(frame['features']['features']);
-				# print 'number of features in frame %d = %d' % (fr, n_features_frame); 
+				if(DATABASE):
+					# define current frame:
+					frame = sample['frames'][fr];
+					n_features_frame = len(frame['features']['features']);
+					# print 'number of features in frame %d = %d' % (fr, n_features_frame); 
+				else:
+					n_features_frame = len(sample);
 
-				if(histogram_sizes):
+				if(INVESTIGATE_SINGLE_IMAGE):
+					(kp_list, desc_list) = transformFeaturesToCVFormat(frame['features']['features']);
+					investigateFeatureDistances(keypoints, descriptors, kp_list, desc_list, im);
+
+				if(histogram_sizes and DATABASE):
 					# compare descriptor magnitude with the ones from the image:
 					descriptor_magnitudes_frame = np.array([0.0] * n_features_frame);
 					for ff in range(n_features_frame):
@@ -278,9 +458,10 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 					# determine the distances to the features in the frame:
 					distances = np.array([0.0] * n_features_frame);
 					for ft2 in range(n_features_frame):
-						#pdb.set_trace();
-						distances[ft2] = np.linalg.norm(np.array(descriptors[ft1]) - np.array(frame['features']['features'][ft2]['descriptor']));
-						# print 'distances[%d] = %f' % (ft2, distances[ft2]);
+						if(DATABASE):
+							distances[ft2] = np.linalg.norm(np.array(descriptors[ft1]) - np.array(frame['features']['features'][ft2]['descriptor']));
+						else:
+							distances[ft2] = np.linalg.norm(np.array(descriptors[ft1]) - np.array(sample[ft2]));
 				
 					# sort the distances:
 					sindices = np.argsort(distances);
@@ -314,3 +495,76 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 	pl.hold = True;
 	for sam in range(n_samples):
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
+		
+		
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt"):
+	# read the data from the database:
+	result = loadData(test_dir + "/" + data_name);
+	# iterate over the data:
+	n_samples = len(result);
+	n_frames = size(result[0]['frames']);
+	
+	# statistics to gather:
+	n_data_points = n_samples * n_frames;
+	distances_to_marker = np.array([0.0] * n_data_points);
+	X = np.array([0.0] * n_data_points);
+	Y = np.array([0.0] * n_data_points);
+	Z = np.array([0.0] * n_data_points);
+	speeds = np.array([0.0] * n_data_points);
+	#VX = np.array([0.0] * n_data_points);
+	#VY = np.array([0.0] * n_data_points);
+	#VZ = np.array([0.0] * n_data_points);
+	responses = [];
+	sizes = [];
+	# loop over all samples:
+	dp = 0;
+	
+	for sample in result:
+		for f in range(n_frames):
+			
+			# get frame:
+			frame = sample['frames'][f];
+		
+			# get distance to marker:
+			position = frame['position'];
+			X[dp] = position[0];
+			Y[dp] = position[1];
+			Z[dp] = position[2];
+			distances_to_marker[dp] = np.linalg.norm(position);
+			
+			# get speed:
+			velocities = frame['velocities'];
+			speeds[dp] = np.linalg.norm(velocities) / 1000.0;
+			
+			# get statistics at feature level:
+			# n_features = len(frame['features']['features']);
+			for ft in frame['features']['features']:
+				responses.append(ft['response']);
+				sizes.append(ft['size']);
+			
+			dp += 1;
+	
+	# show a histogram of the distances:
+	pl.figure();
+	pl.hist(distances_to_marker, 60);
+	pl.title('Distances at which photos are taken');
+	
+	pl.figure();
+	pl.plot(X, Y, 'x');
+	pl.title('Photo positions');
+	
+	# show a histogram of the speeds:
+	pl.figure();
+	pl.hist(speeds, 60);
+	pl.title('Speeds which photos are taken');
+	
+	# show a histogram of the feature response values:
+	pl.figure();
+	pl.hist(np.array(responses), 60);
+	pl.title('Feature response value distribution in database');
+	
+	# show a histogram of the feature sizes:
+	pl.figure();
+	pl.hist(np.array(sizes), 60);
+	pl.title('Feature size distribution in database');
+	
