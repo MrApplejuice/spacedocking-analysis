@@ -3,6 +3,30 @@ from mpl_toolkits.axes_grid import AxesGrid
 from matplotlib.transforms import Affine2D
 import cv, cv2
 import readdata
+import re
+import pyopencl as cl
+
+def generateOpenCLContext():
+  result = None
+  
+  allDevices = []
+  for platform in cl.get_platforms():
+    try:
+      allDevices += platform.get_devices(cl.device_type.GPU)
+    except:
+      pass
+      
+  if len(allDevices) <= 0:
+    for platform in cl.get_platforms():
+      try:
+        allDevices += platform.get_devices(cl.device_type.ALL)
+      except:
+        pass
+        
+  if len(allDevices) > 0:
+    result = cl.Context(allDevices)
+  
+  return result
 
 def cvLoadImage(filename):
   im2 = cv2.imread(filename);
@@ -80,6 +104,24 @@ def selectDbSample(data, sample, frame=None):
     return selectDbSample(data, sample)['frames'][frame]
   else:
     return data[sample]
+
+def plotFile(fn, plotType='x'):
+	f = open(fn, 'r')
+	values = [[float(s) for s in re.split('\\s+', l.strip())] for l in f]
+	f.close()
+
+	maxValueCount = max(map(len, values))
+
+	fig = figure()
+	plot = fig.add_subplot(1, 1, 1)
+	plot.hold(True)
+
+	colors = "bgrcy"
+	for vi in range(maxValueCount):	
+		xy = [(i + 1, v[vi]) for i, v in enumerate(values) if vi < len(v)]
+		plot.plot(map(lambda x: x[0], xy), map(lambda x: x[1], xy), plotType + colors[vi % len(colors)])
+
+	fig.show()
 
 ###################################################################
 # Test - Trying to match data aginst features computed from images
@@ -268,7 +310,36 @@ def testCompareDescriptors():
 # overlay data2
 ############################################
 
+def filterMatches1(features1, features2, distanceMatrix, matchPairs=None):
+  def flatten(l, depth=None):
+    result = []
+    if iterable(l) and ((depth > 0) or (depth is None)):
+      nextDepth = None
+      if not depth is None:
+        nextDepth = depth - 1
+      for i in l:
+        result += flatten(i, depth=nextDepth)
+    else:
+      result.append(l)
+    return result
+
+  # Little helper for analyzing if we are on the right way
+  def avgDistance(fs1, fs2, pairs, transform=Affine2D()):
+    pt1 = array([transform.transform(f[0][0]) for f in fs1])
+    pt2 = array([f[0][0] for f in fs2])
+
+    print "Avg distance:", sum([norm(pt1[i] - pt2[j]) for i, j in pairs]) / len(pairs)
+  
+  if matchPairs is None:
+    matchPairs = flatten([[(i, j) for i in range(len(features1))] for j in range(len(features2))], depth=2)
+    
+  avgDistance(features1, features2, matchPairs)
+  
+
 def matchData(data1, data2, showOnlyMatchedFeatures=True):
+  clContext = generateOpenCLContext()
+  clQueue = cl.CommandQueue(clContext)
+  
   def genFeatures(data, hardLimit=None):
     if type(data) is str:
       img = cvLoadImage(data)
@@ -291,14 +362,52 @@ def matchData(data1, data2, showOnlyMatchedFeatures=True):
   
   # Calculate all distances between features
   print "Calculating distances..."
-  distances = [[None for y in data2[0]] for x in data1[0]]
-  calcDistance = lambda x, y: arccos(dot(array(x), array(y)) / norm(array(x)) / norm(array(y)))
-  #calcDistance = euclid
-  for i, f1 in enumerate(data1[0]):
-    d1 = f1[1]
-    for j, f2 in enumerate(data2[0]):
-      d2 = f2[1]
-      distances[i][j] = calcDistance(d1, d2)
+  distances = array([[None for y in data2[0]] for x in data1[0]])
+
+  # Python or opencl subroutine?  
+  def calcDistances(fs1, fs2, distances):
+    calcDistance = lambda x, y: arccos(dot(array(x), array(y)) / norm(array(x)) / norm(array(y)))
+
+    #calcDistance = euclid
+    for i, f1 in enumerate(fs1):
+      d1 = f1[1]
+      for j, f2 in enumerate(fs2):
+        d2 = f2[1]
+        distances[i][j] = calcDistance(d1, d2)
+  def clCalcDistances(fs1, fs2, distances):
+    f1descs = array([x[1] for x in fs1]).astype(float32)
+    f2descs = array([x[1] for x in fs2]).astype(float32)
+    
+    f1buf = cl.Buffer(clContext, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=f1descs.flatten())
+    f2buf = cl.Buffer(clContext, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=f2descs.flatten())
+    
+    output = zeros(distances.shape).astype(float32)
+    outputBuffer = cl.Buffer(clContext, cl.mem_flags.WRITE_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=output)
+    
+    progCode = """
+    __kernel void calculateDistance(int matWidth, __global float d1[], __global float d2[], __global float out[]) {
+      const int d1i = get_global_id(0);
+      const int d2i = get_global_id(1);
+      
+      float sum = 0.0f;
+      float norm1 = 0.0f;
+      float norm2 = 0.0f;
+      for (int i = 0; i < 128; i++) {
+        norm1 += pow(d1[d1i * 128 + i], 2);
+        norm2 += pow(d2[d2i * 128 + i], 2);
+        sum += d1[d1i * 128 + i] * d2[d2i * 128 + i];
+      }
+      out[d2i + d1i * matWidth] = acos(sum / sqrt(norm1) / sqrt(norm2));
+    }
+    """
+    
+    prog = cl.Program(clContext, progCode).build()
+    prog.calculateDistance(clQueue, [len(f1descs), len(f2descs)], None, int32(len(fs2)), f1buf, f2buf, outputBuffer)
+    cl.enqueue_copy(clQueue, output, outputBuffer)
+    distances[:,:] = output
+    
+    
+  clCalcDistances(data1[0], data2[0], distances)
   
   # Find all matchings under a given threshold
   print "Calculating matches..."
@@ -343,6 +452,9 @@ def matchData(data1, data2, showOnlyMatchedFeatures=True):
     # Draw features matchings
     featurePairs = genMatchPairs(matches)
     print len(featurePairs), "possible matches"
+    
+    # Filter matches
+    filterMatches1(data1[0], data2[0], distances, featurePairs)
 
     if not showOnlyMatchedFeatures:
       # Draw all features
@@ -375,9 +487,17 @@ def matchData(data1, data2, showOnlyMatchedFeatures=True):
 
 def doStuff():  
   data = readdata.loadData("data_GDC/output_GDC.txt")
-  selectedSample = selectDbSample(data, 0, 1);
-  sampleData = dbFeaturesToData(selectedSample['features']['features'])
 
   #matchData("data_PKG/feature-rich-scenes/window-far.jpg", "data_PKG/feature-rich-scenes/window-close.jpg")   
+  matchData("data_PKG/feature-rich-scenes/photowall-far.jpg", "data_PKG/feature-rich-scenes/photowall-near.jpg")   
   #matchData("data_GDC/IMG_1068.JPG", "data_GDC/IMG_1069.JPG")
-  matchData(sampleData, "data_GDC/IMG_1067.JPG", showOnlyMatchedFeatures=True)
+
+  #selectedSample = selectDbSample(data, 0, 1);
+  #sampleData = dbFeaturesToData(selectedSample['features']['features'])
+  #matchData(sampleData, "data_GDC/IMG_1067.JPG", showOnlyMatchedFeatures=False)
+
+  #selectedSample = selectDbSample(data, 1, 4);
+  #sampleData = dbFeaturesToData(selectedSample['features']['features'])
+  #matchData(sampleData, "data_GDC/IMG_1063.JPG", showOnlyMatchedFeatures=False)
+doStuff()
+
