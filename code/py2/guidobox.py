@@ -17,6 +17,26 @@ from mpl_toolkits.axes_grid import AxesGrid
 # result[i]['frames'][j]['features']['features'][fnr]
 # result[i]['frames'][j]['features']['features'][fnr]['descriptor']
 
+def initializeFeatures(features, time_step):
+	n_features = len(features);
+	# Copy the features into a struct used for matching:
+	FTS = [];
+	for f in range(n_features):
+		feature = {'sizes': [], 'descriptors': [], 'time_steps': [], 'n_not_observed': 0};
+		FTS.append(feature);
+		FTS[f]['sizes'].append( features[f]['size'] );
+		FTS[f]['time_steps'].append( time_step );
+		FTS[f]['descriptors'].append( features[f]['descriptor'] );
+	
+	return FTS;
+
+def addMatchedFeature(FT, feature, time_step):
+	# add the info on a matched feature
+	FT['sizes'].append(feature['size']);
+	FT['time_steps'].append(time_step);
+	FT['descriptors'].append(feature['descriptor']);
+	
+	
 # def getMatchedFeatures(sample):
 #
 # Given a sample from the database (consisting of 5 frames), matches features from one frame to the next.
@@ -33,6 +53,9 @@ def getMatchedFeatures(sample, graphics=False):
 
 	# nearest neighbor threshold for matching:
 	NN_THRESHOLD = 0.75;
+	
+	# maximum number of time steps a feature can go unobserved:
+	max_n_not_observed = 1;
 	
 	# number of frames in a stored sequence:
 	n_frames = len(sample['frames']);
@@ -96,27 +119,33 @@ def getMatchedFeatures(sample, graphics=False):
 	# will contain the time to contact estimates:
 	TimeToContact = np.array([1E4]*(n_frames-1));
 	
-	for fr in range(n_frames-1):
+	# FTS will contain all current features
+	frame1 = sample['frames'][0];
+	FTS = initializeFeatures(frame1['features']['features'], 0);
 	
-		# define current and next frame:
-		frame1 = sample['frames'][fr];
-		n_features1 = len(frame1['features']['features']);
+	for fr in range(n_frames-1):
 		
+		n_features1 = len(FTS);
+		
+		# get the features from the next frame:
 		frame2 = sample['frames'][fr+1];
 		n_features2 = len(frame2['features']['features']);
+		matched = np.array([0] * n_features2);
+		
 		
 		if(graphics):
 			pl.figure();
 			pl.hold(True);
 		
-		tau = [];
+		#tau = [];
 		
 		for ft1 in range(n_features1):
 		
 			# determine the distances to the features in the second frame:
 			distances = np.array([0.0] * n_features2);
 			for ft2 in range(n_features2):
-				distances[ft2] = np.linalg.norm(np.array(frame1['features']['features'][ft1]['descriptor']) - np.array(frame2['features']['features'][ft2]['descriptor']));
+				# use the last added descriptor:
+				distances[ft2] = np.linalg.norm(np.array(FTS[ft1]['descriptors'][-1]) - np.array(frame2['features']['features'][ft2]['descriptor']));
 			
 			# sort the distances:
 			sindices = np.argsort(distances);
@@ -124,13 +153,17 @@ def getMatchedFeatures(sample, graphics=False):
 			# the second nearest neighbor has to be sufficiently far for a match:
 			if(len(distances) > 1 and distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
 				# we have a match:
-				delta_size = frame2['features']['features'][sindices[0]]['size'] - frame1['features']['features'][ft1]['size'];
-				if(np.abs(delta_size) > 1E-4):
-					ttc = frame1['features']['features'][ft1]['size'] / delta_size;
-				else:
-					ttc = np.sign(delta_size) * 1E4;
-					
-				tau.append(ttc);
+				addMatchedFeature(FTS[ft1], frame2['features']['features'][sindices[0]], fr+1);
+				matched[sindices[0]] = 1;
+				FTS[ft1]['n_not_observed'] = 0;
+				
+				#delta_size = frame2['features']['features'][sindices[0]]['size'] - frame1['features']['features'][ft1]['size'];
+				#if(np.abs(delta_size) > 1E-4):
+				#	ttc = frame1['features']['features'][ft1]['size'] / delta_size;
+				#else:
+				#	ttc = np.sign(delta_size) * 1E4;
+				#	
+				#tau.append(ttc);
 				
 				if(graphics):
 					x1 = frame1['features']['features'][ft1]['x'];
@@ -138,24 +171,89 @@ def getMatchedFeatures(sample, graphics=False):
 					x2 = frame2['features']['features'][sindices[0]]['x'];
 					y2 = frame2['features']['features'][sindices[0]]['y'];
 					pl.plot([x1, x2], [y1,y2]);
+			else:
+				# feature remained unmatched:
+				FTS[ft1]['n_not_observed'] += 1;
 		
 		if(graphics):
 			pl.title('t = %d' % (fr));
 			pl.show();
 		
-		if(ttc_graphics):
-			pl.figure();
-			pl.hist(tau)
 		
-		if(len(tau) > 0):
-			TimeToContact[fr] = np.median(tau);
-		else:
-			TimeToContact[fr] = 10;
-			
-		print 'TTC frame %d = %f' % (fr, np.median(tau))
+		# housekeeping:
+
+		# remove features that have gone unobserved for too long:
+		print 'len(FTS) before = %d' % len(FTS);
+		FTS = [ft for ft in FTS if ft['n_not_observed'] <= max_n_not_observed];
+		print 'len(FTS) after = %d' % len(FTS);
+		
+		# initialize a new group of (unmatched) features:
+		new_features = [frame2['features']['features'][ft2] for ft2 in range(n_features2) if matched[ft2] == 0];
+		NEW_FTS = initializeFeatures(new_features, fr+1);
+		print 'n new features = %d' % len(NEW_FTS)
+		
+		# append the new features:
+		FTS = FTS + NEW_FTS;
+		
+		#if(ttc_graphics):
+		#	pl.figure();
+		#	pl.hist(tau)
+		#
+		#if(len(tau) > 0):
+		#	TimeToContact[fr] = np.median(tau);
+		#else:
+		#	TimeToContact[fr] = 10;
+		#	
+		#print 'TTC frame %d = %f' % (fr, np.median(tau))
+	
+	n_features = len(FTS);
+	# only determine time-to-contact at the end:
+	memory_distribution = np.array([0] * n_features);
+	min_memory = 3;
+	TTC_estimates = [];
+	for ft in range(n_features):
+		memory_size = len(FTS[ft]['sizes'])
+		memory_distribution[ft] = memory_size;
+		if(memory_size >= min_memory):
+			TTC_estimates.append(determineTTCLinearFit(FTS[ft]));
+	
+	if(n_features > 0):
+		pl.figure();
+		pl.hist(memory_distribution);
+		pl.title('mem dist')
+
+	if(len(TTC_estimates) > 0):
+		pl.figure();
+		pl.hist(TTC_estimates);
+		pl.title('TTC ests')
+	
+	if(len(TTC_estimates) > 0):
+		TimeToContact = np.median(TTC_estimates);
+	else:
+		TimeToContact = [];
+	
+	pdb.set_trace();
 	
 	return TimeToContact;
 	
+
+def determineTTCLinearFit(feature):
+	
+	# perform a linear fit of the sizes:
+	n_ts = len(feature['time_steps']);
+	A = np.ones([n_ts, 2]);
+	A[:,1] = feature['time_steps'];
+	b = np.array(feature['sizes']);
+	(x, residuals, rnk, s) = np.linalg.lstsq(A,b);
+	
+	# calculate TTC:
+	size_slope = x[0];
+	if(abs(size_slope) > 1E-3):
+		TTC = feature['sizes'][-1] / size_slope;
+	else:
+		TTC = sign(slope) * 1E3;
+		
+	return TTC;
 
 def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 
@@ -543,7 +641,7 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
 		
 		
-def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True):
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=False):
 	# read the data from the database:
 	result = loadData(test_dir + "/" + data_name);
 	
@@ -604,6 +702,8 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 				sizes.append(ft['size']);
 			
 			dp += 1;
+		
+		TTC = getMatchedFeatures(sample);
 		
 		if(analyze_TTC):
 			# time to contact estimated with feature sizes:
