@@ -17,7 +17,21 @@ from mpl_toolkits.axes_grid import AxesGrid
 # result[i]['frames'][j]['features']['features'][fnr]
 # result[i]['frames'][j]['features']['features'][fnr]['descriptor']
 
-def getMatchedFeatures(sample):
+# def getMatchedFeatures(sample):
+#
+# Given a sample from the database (consisting of 5 frames), matches features from one frame to the next.
+#
+# input:
+# - sample from the database 
+# - graphics: whether to show all kinds of plots
+#
+# output:
+# - TTC
+def getMatchedFeatures(sample, graphics=False):
+
+	ttc_graphics = False;
+
+	# nearest neighbor threshold for matching:
 	NN_THRESHOLD = 0.75;
 	
 	# number of frames in a stored sequence:
@@ -51,45 +65,54 @@ def getMatchedFeatures(sample):
 		y[fr] = sample['frames'][fr]['position'][y_index];
 		z[fr] = sample['frames'][fr]['position'][z_index];
 	
-	pl.figure();
-	pl.hold(True);
-	pl.plot(roll);
-	pl.plot(pitch);
-	pl.plot(yaw);
-	pl.legend(('roll','pitch','yaw'), 'upper right')
-	pl.show();
+	if(graphics):
+		pl.figure();
+		pl.hold(True);
+		pl.plot(roll);
+		pl.plot(pitch);
+		pl.plot(yaw);
+		pl.legend(('roll','pitch','yaw'), 'upper right')
+		pl.show();
+		
+		pl.figure();
+		pl.hold(True);
+		pl.plot(vx);
+		pl.plot(vy);
+		pl.legend(('vx','vy'), 'upper right')
+		pl.show();
+		
+		pl.figure();
+		pl.plot(z);
+		pl.legend(('z'), 'upper right')
+		pl.show();
+		
+		pl.figure();
+		pl.hold(True);
+		pl.plot(x);
+		pl.plot(y);
+		pl.legend(('x','y'), 'upper right')
+		pl.show();
 	
-	pl.figure();
-	pl.hold(True);
-	pl.plot(vx);
-	pl.plot(vy);
-	pl.legend(('vx','vy'), 'upper right')
-	pl.show();
-	
-	pl.figure();
-	pl.plot(z);
-	pl.legend(('z'), 'upper right')
-	pl.show();
-	
-	pl.figure();
-	pl.hold(True);
-	pl.plot(x);
-	pl.plot(y);
-	pl.legend(('x','y'), 'upper right')
-	pl.show();
-	
+	# will contain the time to contact estimates:
+	TimeToContact = np.array([1E4]*(n_frames-1));
 	
 	for fr in range(n_frames-1):
 	
 		# define current and next frame:
 		frame1 = sample['frames'][fr];
 		n_features1 = len(frame1['features']['features']);
+		
 		frame2 = sample['frames'][fr+1];
 		n_features2 = len(frame2['features']['features']);
 		
-		pl.figure();
-		pl.hold(True);
+		if(graphics):
+			pl.figure();
+			pl.hold(True);
+		
+		tau = [];
+		
 		for ft1 in range(n_features1):
+		
 			# determine the distances to the features in the second frame:
 			distances = np.array([0.0] * n_features2);
 			for ft2 in range(n_features2):
@@ -99,17 +122,40 @@ def getMatchedFeatures(sample):
 			sindices = np.argsort(distances);
 			
 			# the second nearest neighbor has to be sufficiently far for a match:
-			if(distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
+			if(len(distances) > 1 and distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
 				# we have a match:
-				x1 = frame1['features']['features'][ft1]['x'];
-				y1 = frame1['features']['features'][ft1]['y'];
-				x2 = frame2['features']['features'][sindices[0]]['x'];
-				y2 = frame2['features']['features'][sindices[0]]['y'];
-				pl.plot([x1, x2], [y1,y2]);
+				delta_size = frame2['features']['features'][sindices[0]]['size'] - frame1['features']['features'][ft1]['size'];
+				if(np.abs(delta_size) > 1E-4):
+					ttc = frame1['features']['features'][ft1]['size'] / delta_size;
+				else:
+					ttc = np.sign(delta_size) * 1E4;
+					
+				tau.append(ttc);
+				
+				if(graphics):
+					x1 = frame1['features']['features'][ft1]['x'];
+					y1 = frame1['features']['features'][ft1]['y'];
+					x2 = frame2['features']['features'][sindices[0]]['x'];
+					y2 = frame2['features']['features'][sindices[0]]['y'];
+					pl.plot([x1, x2], [y1,y2]);
 		
-		pl.title('t = %d' % (fr));
-		pl.show();
+		if(graphics):
+			pl.title('t = %d' % (fr));
+			pl.show();
 		
+		if(ttc_graphics):
+			pl.figure();
+			pl.hist(tau)
+		
+		if(len(tau) > 0):
+			TimeToContact[fr] = np.median(tau);
+		else:
+			TimeToContact[fr] = 10;
+			
+		print 'TTC frame %d = %f' % (fr, np.median(tau))
+	
+	return TimeToContact;
+	
 
 def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 
@@ -143,7 +189,7 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 		sindices = np.argsort(distances);
 		
 		# the second nearest neighbor has to be sufficiently far for a match:
-		if(distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
+		if(len(distances) > 1 and distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
 			print 'match'
 			# we have a match:
 			# properties of key points:
@@ -497,9 +543,17 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
 		
 		
-def plotDatabaseStatistics(test_dir="../data", data_name="output.txt"):
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True):
 	# read the data from the database:
 	result = loadData(test_dir + "/" + data_name);
+	
+	if(selectSubset):
+		# select a number of random samples:
+		n_selected_samples = 10;
+		n_samples = len(result);
+		rand_inds = np.random.permutation(range(n_samples));
+		result = [result[i] for i in rand_inds[0:n_selected_samples].tolist()];
+		
 	# iterate over the data:
 	n_samples = len(result);
 	n_frames = size(result[0]['frames']);
@@ -518,8 +572,15 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt"):
 	sizes = [];
 	# loop over all samples:
 	dp = 0;
+	sp = 0;
+	
+	if(analyze_TTC):
+		TTC = np.zeros([n_samples, n_frames-1]);
+		GT_TTC = np.zeros([n_samples, n_frames-1]);
+		epsi = 1E-4 * np.ones([1, n_frames-1]);
 	
 	for sample in result:
+	
 		for f in range(n_frames):
 			
 			# get frame:
@@ -543,6 +604,21 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt"):
 				sizes.append(ft['size']);
 			
 			dp += 1;
+		
+		if(analyze_TTC):
+			# time to contact estimated with feature sizes:
+			TTC[sp, :] = getMatchedFeatures(sample);
+			
+			# Ground truth TTC:
+			# We're using gross simplifications here:
+			# speeds at those time steps:
+			spds = speeds[dp-n_frames:dp-1] + epsi;
+			# distances at those time steps:
+			dsts = distances_to_marker[dp-n_frames:dp-1];
+			# determine "ground truth" TTC:
+			GT_TTC[sp,:] = dsts / spds;
+			
+		sp += 1;
 	
 	# show a histogram of the distances:
 	pl.figure();
@@ -568,3 +644,24 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt"):
 	pl.hist(np.array(sizes), 60);
 	pl.title('Feature size distribution in database');
 	
+	if(analyze_TTC):
+		# show the TTCs
+		pl.figure();
+		pl.hold = True;
+		time_steps = range(n_frames-1)
+		for s in range(n_samples):
+			pl.plot(time_steps, TTC[s,:], color=(0.7,0.7,0.7));
+		pl.plot(time_steps, np.median(TTC, axis=0), color=(1.0,0.0,0.0), linewidth=2);
+		pl.hold=False;
+		pl.title('TTC estimates');
+		
+		# ground truth:
+		pl.figure();
+		pl.hold = True;
+		for s in range(n_samples):
+			pl.plot(time_steps, GT_TTC[s,:], color=(0.7,0.7,0.7));
+		pl.plot(time_steps, np.median(GT_TTC, axis=0), color=(0.0,0.0,1.0), linewidth=2);
+		pl.title('Ground truth TTC values');
+		pdb.set_trace();
+		
+		
