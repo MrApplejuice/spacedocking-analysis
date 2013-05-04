@@ -17,6 +17,17 @@ from mpl_toolkits.axes_grid import AxesGrid
 # result[i]['frames'][j]['features']['features'][fnr]
 # result[i]['frames'][j]['features']['features'][fnr]['descriptor']
 
+roll_index = 0;
+yaw_index = 1;
+pitch_index = 2;
+vx_index = 0;
+vz_index = 1;
+vy_index = 2;
+x_index = 1;
+y_index = 0;
+z_index = 2;
+
+
 def initializeFeatures(features, time_step):
 	n_features = len(features);
 	# Copy the features into a struct used for matching:
@@ -62,14 +73,14 @@ def getMatchedFeatures(sample, graphics=False):
 	
 	# first show velocities, angles:
 	
-	roll_index = 0;
-	yaw_index = 1;
-	pitch_index = 2;
-	vx_index = 0;
-	vy_index = 2;
-	x_index = 0;
-	y_index = 1;
-	z_index = 2;
+	#roll_index = 0;
+	#yaw_index = 1;
+	#pitch_index = 2;
+	#vx_index = 0;
+	#vy_index = 2;
+	#x_index = 0;
+	#y_index = 1;
+	#z_index = 2;
 	roll = np.array([0.0] * n_frames);
 	yaw = np.array([0.0] * n_frames);
 	pitch = np.array([0.0] * n_frames);
@@ -211,30 +222,31 @@ def getMatchedFeatures(sample, graphics=False):
 	memory_distribution = np.array([0] * n_features);
 	min_memory = 3;
 	TTC_estimates = [];
+	n_features_used_for_estimate = 0;
 	for ft in range(n_features):
 		memory_size = len(FTS[ft]['sizes'])
 		memory_distribution[ft] = memory_size;
 		if(memory_size >= min_memory):
 			TTC_estimates.append(determineTTCLinearFit(FTS[ft]));
-	
-	if(n_features > 0):
-		pl.figure();
-		pl.hist(memory_distribution);
-		pl.title('mem dist')
+			n_features_used_for_estimate += 1;
+			
+	if(ttc_graphics):
+		if(n_features > 0):
+			pl.figure();
+			pl.hist(memory_distribution);
+			pl.title('mem dist')
 
-	if(len(TTC_estimates) > 0):
-		pl.figure();
-		pl.hist(TTC_estimates);
-		pl.title('TTC ests')
+		if(len(TTC_estimates) > 0):
+			pl.figure();
+			pl.hist(TTC_estimates);
+			pl.title('TTC ests')
 	
 	if(len(TTC_estimates) > 0):
 		TimeToContact = np.median(TTC_estimates);
 	else:
-		TimeToContact = [];
+		TimeToContact = 1E3;
 	
-	pdb.set_trace();
-	
-	return TimeToContact;
+	return (TimeToContact, n_features_used_for_estimate);
 	
 
 def determineTTCLinearFit(feature):
@@ -652,7 +664,7 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
 		
 		
-def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=False):
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True):
 	# read the data from the database:
 	result = loadData(test_dir + "/" + data_name);
 	
@@ -674,9 +686,12 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	Y = np.array([0.0] * n_data_points);
 	Z = np.array([0.0] * n_data_points);
 	speeds = np.array([0.0] * n_data_points);
-	#VX = np.array([0.0] * n_data_points);
-	#VY = np.array([0.0] * n_data_points);
-	#VZ = np.array([0.0] * n_data_points);
+	VX = np.array([0.0] * n_data_points);
+	VY = np.array([0.0] * n_data_points);
+	VZ = np.array([0.0] * n_data_points);
+	pitch = np.array([0.0] * n_data_points);
+	roll = np.array([0.0] * n_data_points);
+	yaw = np.array([0.0] * n_data_points);
 	responses = [];
 	sizes = [];
 	# loop over all samples:
@@ -684,10 +699,12 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	sp = 0;
 	
 	if(analyze_TTC):
-		TTC = np.zeros([n_samples, n_frames-1]);
-		GT_TTC = np.zeros([n_samples, n_frames-1]);
-		epsi = 1E-4 * np.ones([1, n_frames-1]);
-	
+		TTC = np.array([0.0] * n_samples); #np.zeros([n_samples, n_frames-1]);
+		NF = np.array([0.0] * n_samples); 
+		GT_TTC = np.array([0.0] * n_samples); #np.zeros([n_samples, n_frames-1]);
+		epsi = 1E-3;#1E-4 * np.ones([1, n_frames-1]);
+		R = np.zeros([2,2]);
+		
 	for sample in result:
 	
 		for f in range(n_frames):
@@ -697,14 +714,22 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		
 			# get distance to marker:
 			position = frame['position'];
-			X[dp] = position[0];
-			Y[dp] = position[1];
-			Z[dp] = position[2];
+			X[dp] = position[x_index];
+			Y[dp] = position[y_index];
+			Z[dp] = position[z_index];
 			distances_to_marker[dp] = np.linalg.norm(position);
 			
 			# get speed:
 			velocities = frame['velocities'];
+			VX[dp] = velocities[vx_index] / 1000.0;
+			VY[dp] = velocities[vy_index] / 1000.0;
+			VZ[dp] = velocities[vz_index] / 1000.0;
 			speeds[dp] = np.linalg.norm(velocities) / 1000.0;
+			
+			angles = frame['euler_angles'];
+			pitch[dp] = angles[pitch_index];
+			roll[dp] = angles[roll_index];
+			yaw[dp] = angles[yaw_index];
 			
 			# get statistics at feature level:
 			# n_features = len(frame['features']['features']);
@@ -714,20 +739,38 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 			
 			dp += 1;
 		
-		TTC = getMatchedFeatures(sample);
 		
 		if(analyze_TTC):
 			# time to contact estimated with feature sizes:
-			TTC[sp, :] = getMatchedFeatures(sample);
+			(TTC[sp], NF[sp]) = getMatchedFeatures(sample);
 			
 			# Ground truth TTC:
-			# We're using gross simplifications here:
-			# speeds at those time steps:
-			spds = speeds[dp-n_frames:dp-1] + epsi;
-			# distances at those time steps:
-			dsts = distances_to_marker[dp-n_frames:dp-1];
+			
+			# first rotate the 2D body velocities to obtain world velocities:
+			# heading was not logged well!
+			#hd = np.radians(yaw[dp-1]);
+			#R[0,0] = np.cos(hd);
+			#R[1,1] = R[0,0];
+			#R[0,1] = -np.sin(hd);
+			#R[1,0] = - R[0,1];
+			#v_body = np.zeros([2,1]);
+			#v_body[0] = VX[dp-1];
+			#v_body[1] = VY[dp-1];
+			#v_world = np.dot(R, v_body);
+			
+			v_world = np.zeros([2,1]); 
+			v_world[0] = VX[dp-1];
+			v_world[1] = VY[dp-1];
+			
+			# assume a wall at Y = 0: 
+			dist = Y[dp-1];
+			vel = -v_world[1];
+			
 			# determine "ground truth" TTC:
-			GT_TTC[sp,:] = dsts / spds;
+			if(abs(vel) > epsi):
+				GT_TTC[sp] = dist / vel;
+			else:
+				GT_TTC[sp] = 1 / epsi;
 			
 		sp += 1;
 	
@@ -756,23 +799,33 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	pl.title('Feature size distribution in database');
 	
 	if(analyze_TTC):
-		# show the TTCs
+	
+		# plot TTC and GT_TTC in the same figure:
 		pl.figure();
-		pl.hold = True;
-		time_steps = range(n_frames-1)
-		for s in range(n_samples):
-			pl.plot(time_steps, TTC[s,:], color=(0.7,0.7,0.7));
-		pl.plot(time_steps, np.median(TTC, axis=0), color=(1.0,0.0,0.0), linewidth=2);
-		pl.hold=False;
-		pl.title('TTC estimates');
-		
-		# ground truth:
+		pl.plot(TTC, GT_TTC, 'x');
+		pl.title('TTC vs ground truth TTC')
+	
 		pl.figure();
-		pl.hold = True;
-		for s in range(n_samples):
-			pl.plot(time_steps, GT_TTC[s,:], color=(0.7,0.7,0.7));
-		pl.plot(time_steps, np.median(GT_TTC, axis=0), color=(0.0,0.0,1.0), linewidth=2);
-		pl.title('Ground truth TTC values');
-		pdb.set_trace();
+		pl.hist(NF, 30);
+		pl.title('Number of features used for estimate');
+	
+		## show the TTCs
+		#pl.figure();
+		#pl.hold = True;
+		#time_steps = range(n_frames-1)
+		#for s in range(n_samples):
+		#	pl.plot(time_steps, TTC[s,:], color=(0.7,0.7,0.7));
+		#pl.plot(time_steps, np.median(TTC, axis=0), color=(1.0,0.0,0.0), linewidth=2);
+		#pl.hold=False;
+		#pl.title('TTC estimates');
+		#
+		## ground truth:
+		#pl.figure();
+		#pl.hold = True;
+		#for s in range(n_samples):
+		#	pl.plot(time_steps, GT_TTC[s,:], color=(0.7,0.7,0.7));
+		#pl.plot(time_steps, np.median(GT_TTC, axis=0), color=(0.0,0.0,1.0), linewidth=2);
+		#pl.title('Ground truth TTC values');
+		#pdb.set_trace();
 		
 		
