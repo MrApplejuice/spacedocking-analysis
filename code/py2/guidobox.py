@@ -247,11 +247,22 @@ def determineTTCLinearFit(feature):
 	(x, residuals, rnk, s) = np.linalg.lstsq(A,b);
 	
 	# calculate TTC:
-	size_slope = x[0];
+	size_slope = x[1];
 	if(abs(size_slope) > 1E-3):
 		TTC = feature['sizes'][-1] / size_slope;
 	else:
-		TTC = sign(slope) * 1E3;
+		TTC = sign(size_slope) * 1E3;
+		
+	#pl.figure();
+	#pl.plot(feature['time_steps'], feature['sizes'], 'x', color=(0.0,0.0,0.0));
+	#pl.hold = True;
+	#y = np.array([0.0]* n_ts);
+	#ii = 0;
+	#for t in feature['time_steps']:
+	#	y[ii] = x[0] + x[1] * t;
+	#	ii += 1;
+	#pl.plot(feature['time_steps'], y, color=(0.0, 1.0, 0.0), linewidth=2);
+	#pl.hold=False;
 		
 	return TTC;
 
