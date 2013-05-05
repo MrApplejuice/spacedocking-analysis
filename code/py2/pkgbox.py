@@ -310,7 +310,29 @@ def testCompareDescriptors():
 # overlay data2
 ############################################
 
-def filterMatches1(features1, features2, distanceMatrix, matchPairs=None):
+def reverseMatches(matches, f2count):
+  result = map(list, [[]] * f2count)
+  
+  for ii, item in enumerate(matches):
+    for match in item:
+      result[match].append(ii)
+  
+  return result
+ 
+def unifyMatches(matches1, matches2):
+  result = [[]] * len(matches1)
+  for i, (m1, m2) in enumerate(zip(matches1, matches2)):
+    elements = m1 + m2
+    result[i] = [e for j, e in enumerate(elements) if not e in elements[:j]]
+  return result
+ 
+def genMatchPairs(matches):
+  result = []
+  for i, m in enumerate(matches):
+    result += [(i, j) for j in m]
+  return result
+
+def filterMatches1(features1, features2, distanceMatrix, clContext, matches=None):
   def flatten(l, depth=None):
     result = []
     if iterable(l) and ((depth > 0) or (depth is None)):
@@ -330,10 +352,96 @@ def filterMatches1(features1, features2, distanceMatrix, matchPairs=None):
 
     print "Avg distance:", sum([norm(pt1[i] - pt2[j]) for i, j in pairs]) / len(pairs)
   
-  if matchPairs is None:
-    matchPairs = flatten([[(i, j) for i in range(len(features1))] for j in range(len(features2))], depth=2)
+  def getDivergenceScore(matches, debug=False):
+    result = 0.0
+    count = len(matches)
+    fmatches = filter(lambda x: len(x) > 0, matches)
+    for fi1, fi2 in fmatches:
+      if debug:
+        print "d", fi1, "->", fi2, "=", distanceMatrix[fi1][fi2]
+      result += sqrt(distanceMatrix[fi1][fi2])
+    return result * count / len(fmatches) * count / len(fmatches)
+  
+  def checkConsitency(pairs):
+    def checkUniqueness(l):
+      l = list(l)
+      l.sort()
+      return all(map(lambda i: l[i] != l[i + 1], range(len(l) - 1)))
+    return all(map(lambda i: checkUniqueness(map(lambda x: x[i], pairs)), range(2)))
     
-  avgDistance(features1, features2, matchPairs)
+  def bruteforce(matches):
+    # Limit number of elements over which we iterate
+    ELEMENT_LIMIT = 10
+    rmatches = reverseMatches(matches, len(features2))
+    
+    def limitMatches(matches):
+      count = 0
+      for i in range(len(matches)):
+        if len(matches[i]) > 0:
+          count += 1
+        if count >= ELEMENT_LIMIT:
+          boolToInt = {True: 0, False: 1}
+          return [m[boolToInt[j <= i]] for j, m in enumerate(zip(matches, [[]] * len(matches)))]
+      return matches
+      
+    matches = limitMatches(matches)
+    rmatches = limitMatches(rmatches)
+    rrmatches = reverseMatches(rmatches, len(features1))
+    matches = unifyMatches(matches, rrmatches)
+    
+    limitsVector = [len(m) for m in matches]
+    indexVector = [0 for l in limitsVector]
+    
+    # Calculate and show number of combinations
+    combs = 1
+    for l in limitsVector:
+      combs *= l + 1
+    print "Iterating over", combs, "combinations"
+    
+    def incrementIndexVector(subIndex=0):
+      if subIndex >= len(indexVector):
+        return False
+        
+      indexVector[subIndex] += 1
+      if indexVector[subIndex] > limitsVector[subIndex]:
+        indexVector[subIndex] = 0
+        return incrementIndexVector(subIndex + 1)
+      return True
+
+    # Brute force
+    maxMatchCount = sum(map(lambda x: len(x) > 0, matches))
+    bestScore = None
+    best = []
+    while incrementIndexVector():
+      # Generate matches
+      candidatePairs = [(i, cm[j - 1]) for i, (cm, j) in enumerate(zip(matches, indexVector)) if j > 0]
+      
+      if not checkConsitency(candidatePairs):
+        continue
+      divergenceScore = getDivergenceScore(candidatePairs + [[]] * (maxMatchCount - len(candidatePairs)))
+      #print divergenceScore, len(candidatePairs), len(candidatePairs + [[]] * (maxMatchCount - len(candidatePairs)))
+      if (divergenceScore < bestScore) or (bestScore is None):
+        print divergenceScore
+        bestScore = divergenceScore
+        best = candidatePairs
+      
+    print getDivergenceScore(best, True)
+    return best
+  
+  if matches is None:
+    matches = flatten([[(i, j) for i in range(len(features1))] for j in range(len(features2))], depth=2)
+  rmatches = reverseMatches(matches, len(features2))
+
+  avgDistance(features1, features2, genMatchPairs(matches))
+
+  matchPairs = genMatchPairs(matches)
+  matchPairs = bruteforce(matches)
+  
+  if not checkConsitency(matchPairs):
+    print "WARNING!","Inconsistent match pairs"
+    
+  return matchPairs
+  
   
 
 def matchData(data1, data2, showOnlyMatchedFeatures=True):
@@ -409,11 +517,17 @@ def matchData(data1, data2, showOnlyMatchedFeatures=True):
     
   clCalcDistances(data1[0], data2[0], distances)
   
-  # Find all matchings under a given threshold
+  # Find all candidate matches under a given threshold
   print "Calculating matches..."
   THRESHOLD = 25 * pi / 180.0
   matches = [[i for i, d in enumerate(row) if d < THRESHOLD] for row in distances]
   
+  # Filter matches
+  pairs = filterMatches1(data1[0], data2[0], distances, clContext, matches)
+  matches = [[]] * len(matches)
+  for p in pairs:
+    matches[p[0]] = [p[1]];
+
   # Draw match plot
   imagePairOffset = (700, 0)
   def drawFeature(plot, fpos, size, rotation, initTransform=Affine2D(), color='y'):
@@ -425,12 +539,6 @@ def matchData(data1, data2, showOnlyMatchedFeatures=True):
     for i, j in drawPairs:
       plot.plot((vertices[i][0], vertices[j][0]), (vertices[i][1], vertices[j][1]), '-' + color)
   
-  def genMatchPairs(matches):
-    result = []
-    for i, m in enumerate(matches):
-      result += [(i, j) for j in m]
-    return result
-
   def showMatchPlot(data1, data2, matches):
     matchFigure = figure(figsize=figaspect(0.5))
     matchFigure.suptitle("Image - image matches")
@@ -451,11 +559,7 @@ def matchData(data1, data2, showOnlyMatchedFeatures=True):
 
     # Draw features matchings
     featurePairs = genMatchPairs(matches)
-    print len(featurePairs), "possible matches"
     
-    # Filter matches
-    filterMatches1(data1[0], data2[0], distances, featurePairs)
-
     if not showOnlyMatchedFeatures:
       # Draw all features
       for f in map(lambda x: x[0], data1[0]):
@@ -489,12 +593,14 @@ def doStuff():
   data = readdata.loadData("data_GDC/output_GDC.txt")
 
   #matchData("data_PKG/feature-rich-scenes/window-far.jpg", "data_PKG/feature-rich-scenes/window-close.jpg")   
-  matchData("data_PKG/feature-rich-scenes/photowall-far.jpg", "data_PKG/feature-rich-scenes/photowall-near.jpg")   
+  #matchData("data_PKG/feature-rich-scenes/map1.jpg", "data_PKG/feature-rich-scenes/map2.jpg")   
+  #matchData("data_PKG/feature-rich-scenes/map1.jpg", "data_PKG/feature-rich-scenes/map1.jpg")   
+  #matchData("data_PKG/feature-rich-scenes/photowall-far.jpg", "data_PKG/feature-rich-scenes/photowall-near.jpg")   
   #matchData("data_GDC/IMG_1068.JPG", "data_GDC/IMG_1069.JPG")
 
-  #selectedSample = selectDbSample(data, 0, 1);
-  #sampleData = dbFeaturesToData(selectedSample['features']['features'])
-  #matchData(sampleData, "data_GDC/IMG_1067.JPG", showOnlyMatchedFeatures=False)
+  selectedSample = selectDbSample(data, 0, 1);
+  sampleData = dbFeaturesToData(selectedSample['features']['features'])
+  matchData(sampleData, "data_GDC/IMG_1067.JPG", showOnlyMatchedFeatures=True)
 
   #selectedSample = selectDbSample(data, 1, 4);
   #sampleData = dbFeaturesToData(selectedSample['features']['features'])
