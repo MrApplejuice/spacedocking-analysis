@@ -359,7 +359,7 @@ def filterMatches1(features1, features2, distanceMatrix, clContext, matches=None
     for fi1, fi2 in fmatches:
       if debug:
         print "d", fi1, "->", fi2, "=", distanceMatrix[fi1][fi2]
-      result += sqrt(distanceMatrix[fi1][fi2])
+      result += distanceMatrix[fi1][fi2]
     return result * count / len(fmatches) * count / len(fmatches)
   
   def checkConsitency(pairs):
@@ -371,7 +371,7 @@ def filterMatches1(features1, features2, distanceMatrix, clContext, matches=None
     
   def bruteforce(matches):
     # Limit number of elements over which we iterate
-    ELEMENT_LIMIT = 10
+    ELEMENT_LIMIT = 6
     rmatches = reverseMatches(matches, len(features2))
     
     def limitMatches(matches):
@@ -592,15 +592,16 @@ def matchData(data1, data2, showOnlyMatchedFeatures=True):
 def doStuff():  
   data = readdata.loadData("data_GDC/output_GDC.txt")
 
+  matchData("data_PKG/feature-rich-scenes/window-close.jpg", "data_PKG/feature-rich-scenes/dishes.jpg")   
   #matchData("data_PKG/feature-rich-scenes/window-far.jpg", "data_PKG/feature-rich-scenes/window-close.jpg")   
   #matchData("data_PKG/feature-rich-scenes/map1.jpg", "data_PKG/feature-rich-scenes/map2.jpg")   
   #matchData("data_PKG/feature-rich-scenes/map1.jpg", "data_PKG/feature-rich-scenes/map1.jpg")   
   #matchData("data_PKG/feature-rich-scenes/photowall-far.jpg", "data_PKG/feature-rich-scenes/photowall-near.jpg")   
   #matchData("data_GDC/IMG_1068.JPG", "data_GDC/IMG_1069.JPG")
 
-  selectedSample = selectDbSample(data, 0, 1);
-  sampleData = dbFeaturesToData(selectedSample['features']['features'])
-  matchData(sampleData, "data_GDC/IMG_1067.JPG", showOnlyMatchedFeatures=True)
+  #selectedSample = selectDbSample(data, 0, 1);
+  #sampleData = dbFeaturesToData(selectedSample['features']['features'])
+  #matchData(sampleData, "data_GDC/IMG_1067.JPG", showOnlyMatchedFeatures=True)
 
   #selectedSample = selectDbSample(data, 1, 4);
   #sampleData = dbFeaturesToData(selectedSample['features']['features'])
