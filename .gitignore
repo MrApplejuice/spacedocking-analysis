@@ -8,3 +8,9 @@
 *.egg
 *.egg-info
 
+# C++ build artifacts
+*.o
+*.d
+
+# Binaries
+code/clusterexplorer/clusterer

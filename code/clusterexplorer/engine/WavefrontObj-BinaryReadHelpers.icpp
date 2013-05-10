@@ -1,0 +1,135 @@
+namespace BufferedReaderDetail {
+  template <typename T>
+  T readBytesFromBuffer(size_t& readbufferIndex, uint8_t*& readBuffer, WavefrontMesh::Endianness e) {
+    T result = 0;
+
+    uint8_t* ptr = readBuffer + readbufferIndex;
+    readbufferIndex += sizeof(result);
+
+    switch (e) {
+      case WavefrontMesh::ENDIAN_LITTLE:
+        for (unsigned int i = 0; i < sizeof(result); i++) {
+          result |= ptr[i] << (i * 8);
+        }
+        break;
+      case WavefrontMesh::ENDIAN_BIG:
+        for (unsigned int i = 0; i < sizeof(result); i++) {
+          result |= ptr[i] << ((sizeof(result) - 1 - i) * 8);
+        }
+        break;
+      default:
+        assert((e != WavefrontMesh::ENDIAN_BIG) && (e != WavefrontMesh::ENDIAN_LITTLE));
+    }
+    
+    return result;
+  }
+
+  /** Specialized template for floats (no need to deal with endianness for them) */
+  template <>
+  float readBytesFromBuffer<float>(size_t& readbufferIndex, uint8_t*& readBuffer, WavefrontMesh::Endianness e) {
+    float result = 0;
+
+    uint8_t* ptr = readBuffer + readbufferIndex;
+    uint8_t* dest = (uint8_t*) &result;
+    copy(ptr, ptr + sizeof(result), dest);
+    
+    readbufferIndex += sizeof(result);
+
+    return result;
+  }
+}
+
+// Little helper class for buffered reading from binary files 
+class BufferedReader : public noncopyable {
+  private:
+    istream& in;
+    WavefrontMesh::Endianness e;
+  
+    const size_t READ_BUFFER_SIZE;
+    uint8_t* readBuffer;
+    size_t readbufferIndex, bytesAvailable;
+    
+    /** Convert type T to BIG/LITTLE ENDIAN encoded byte stream */
+    template <typename T>
+    T readBytesFromBuffer() {
+      return BufferedReaderDetail::readBytesFromBuffer<T>(readbufferIndex, readBuffer, e);
+    }
+
+    /** Read new bytes from input stream to fill internal buffer */
+    void readNewBytes() {
+      if ((READ_BUFFER_SIZE - bytesAvailable + readbufferIndex > 0) && (!in.fail())) {
+        if (bytesAvailable - readbufferIndex > 0) {
+          memmove(readBuffer, readBuffer + readbufferIndex, bytesAvailable - readbufferIndex);
+        }
+        bytesAvailable -= readbufferIndex;
+        readbufferIndex = 0;
+        in.read((char*) readBuffer + bytesAvailable, READ_BUFFER_SIZE - bytesAvailable);
+        if (in.fail() && !in.eof()) {
+          throw WavefrontMeshException() << WavefrontMeshExceptionData("Cannot read to inputstream (IOError)");
+        }
+        bytesAvailable += in.gcount();
+      }
+    }
+  public:
+    /** Read data from file (using internal buffer) */
+    template <typename T>
+    T operator()(T type) {
+      // Time to read new data
+      if (sizeof(type) + readbufferIndex > bytesAvailable) {
+        readNewBytes();
+      }
+      if (sizeof(type) + readbufferIndex > bytesAvailable) {
+          throw WavefrontMeshException() << WavefrontMeshExceptionData("Unsuspected end of file");
+      }
+      return readBytesFromBuffer<T>();
+    }
+
+    /** Construct a new buffered reader with automatic endianness conversion */
+    BufferedReader(istream& i, WavefrontMesh::Endianness e) : in(i), e(e), READ_BUFFER_SIZE(1024), readBuffer(new uint8_t[READ_BUFFER_SIZE]), readbufferIndex(0), bytesAvailable(0) {
+      switch (e) {
+        case WavefrontMesh::ENDIAN_LITTLE: break;
+        case WavefrontMesh::ENDIAN_BIG:    break;
+        default:
+          assert((e != WavefrontMesh::ENDIAN_BIG) && (e != WavefrontMesh::ENDIAN_LITTLE));
+      }
+    }
+    
+    virtual ~BufferedReader() {
+      delete[] readBuffer;
+    }
+};
+
+string readAndUnpackString(BufferedReader& reader) {
+  size_t count = reader((uint32_t) 0);
+  char* str = new char[count + 1];
+  for (char* s = str; s != str + count; s++) { 
+    *s = reader((int8_t) 0);
+  }
+  str[count] = 0;
+  
+  string result(str);
+  delete[] str;
+  
+  return result;
+}
+
+WavefrontVertex readAndUnpackVertex(BufferedReader& reader) {
+  PackedWavefrontVertex wfv;
+  wfv.coordinate[0] = reader(0.0f); 
+  wfv.coordinate[1] = reader(0.0f); 
+  wfv.coordinate[2] = reader(0.0f); 
+  wfv.normal[0] = reader(0.0f); 
+  wfv.normal[1] = reader(0.0f); 
+  wfv.normal[2] = reader(0.0f); 
+  wfv.textureCoordinate[0] = reader(0.0f); 
+  wfv.textureCoordinate[1] = reader(0.0f); 
+  return wfv.unpack();
+}
+
+WavefrontTriangle readAndUnpackTriangle(BufferedReader& reader) {
+  WavefrontTriangle result;
+  result.indexes[0] = reader((uint32_t) 0);
+  result.indexes[1] = reader((uint32_t) 0);
+  result.indexes[2] = reader((uint32_t) 0);
+  return result;
+}

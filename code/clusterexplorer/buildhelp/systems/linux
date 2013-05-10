@@ -1,0 +1,14 @@
+LINUX_BINARY=$(GAME_NAME)
+TARGET_PLATFORM_NAME=PC
+
+BUILDTARGET=$(LINUX_BINARY)
+FLAGS+=$(shell pkg-config --cflags sdl)
+LINKFLAGS+=$(shell pkg-config --libs sdl)
+LIBS+=SDL_mixer GL GLU IL ILUT boost_thread boost_filesystem boost_system boost_regex
+SRC_DIRECTORIES+=systems/sdl/src/
+
+linux: $(TARGETPREREQUISITES) $(BUILDTARGET)
+	@echo Built for linux
+	
+ALLTARGETS=$(SYSTEM) $(BUILDTARGET)
+

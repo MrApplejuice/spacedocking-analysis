@@ -1,0 +1,164 @@
+namespace BufferedWriterDetail {
+  template <typename T>
+  void writeBytesToBuffer(T a, size_t& writebufferIndex, uint8_t*& writeBuffer, WavefrontMesh::Endianness e) {
+    uint8_t* ptr = writeBuffer + writebufferIndex;
+    writebufferIndex += sizeof(T);
+
+    switch (e) {
+      case WavefrontMesh::ENDIAN_LITTLE:
+        for (unsigned int i = 0; i < sizeof(T); i++) {
+          ptr[i] = (uint8_t) ((a >> (i * 8)) & 0xFF);
+        }
+        break;
+      case WavefrontMesh::ENDIAN_BIG:
+        for (unsigned int i = 0; i < sizeof(T); i++) {
+          ptr[i] = (uint8_t) ((a >> ((sizeof(T) - 1 - i) * 8)) & 0xFF);
+        }
+        break;
+      default:
+        assert((e != WavefrontMesh::ENDIAN_BIG) && (e != WavefrontMesh::ENDIAN_LITTLE));
+    }
+  }
+
+  /** Specialized template for floats (no need to deal with endianness for them) */
+  template <>
+  void writeBytesToBuffer<float>(float f, size_t& writebufferIndex, uint8_t*& writeBuffer, WavefrontMesh::Endianness e) {
+    uint8_t* ptr = (uint8_t*) &f;
+    uint8_t* dest = writeBuffer + writebufferIndex;
+    copy(ptr, ptr + sizeof(f), dest);
+    
+    writebufferIndex += sizeof(f);
+  }
+}
+
+// Little helper class to support buffered writing to a file
+class BufferedWriter : public noncopyable {
+  private:
+    ostream& out;
+    WavefrontMesh::Endianness e;
+  
+    const size_t WRITE_BUFFER_SIZE;
+    uint8_t* writeBuffer;
+    size_t writebufferIndex;
+    
+    /** Convert type T to BIG/LITTLE ENDIAN encoded byte stream */
+    template <typename T>
+    void writeBytesToBuffer(T a) {
+      BufferedWriterDetail::writeBytesToBuffer(a, writebufferIndex, writeBuffer, e);
+    }
+    
+    /** Flush memory buffer to disc */
+    void flush() {
+      if (writebufferIndex > 0) {
+        out.write((char*) writeBuffer, writebufferIndex);
+        if (out.fail()) {
+          throw WavefrontMeshException() << WavefrontMeshExceptionData("Cannot write to outputstream (IOError)");
+        }
+        writebufferIndex = 0;
+      }
+    }
+  public:
+    /** Write data to disc (filling the internal buffer first) */
+    template <typename T>
+    void operator()(T v) {
+      // Time to write...
+      if (sizeof(T) + writebufferIndex > WRITE_BUFFER_SIZE) {
+        flush();
+      }
+      writeBytesToBuffer(v);
+    }
+    
+    /** Construct a new buffered writer for outputstream o converting endianess to e */
+    BufferedWriter(ostream& o, WavefrontMesh::Endianness e) : out(o), e(e), WRITE_BUFFER_SIZE(1024), writeBuffer(new uint8_t[WRITE_BUFFER_SIZE]), writebufferIndex(0) {
+      switch (e) {
+        case WavefrontMesh::ENDIAN_LITTLE: break;
+        case WavefrontMesh::ENDIAN_BIG:    break;
+        default:
+          assert((e != WavefrontMesh::ENDIAN_BIG) && (e != WavefrontMesh::ENDIAN_LITTLE));
+      }
+    }
+    
+    virtual ~BufferedWriter() {
+      flush();
+      delete[] writeBuffer;
+    }
+};
+
+/** Packed version of a WavefrontVertex */
+struct PackedWavefrontVertex {
+  /** Position of this vertex */
+  float coordinate[3];
+  /** Normal of this vertex, set to zero if not defined */
+  float normal[3];
+  /** Texture coordinate of this vertex, set to zero if not defined */
+  float textureCoordinate[2];
+  
+  // Unpacks data into possibly alinged format
+  WavefrontVertex unpack() {
+    WavefrontVertex wfv;
+    copy(coordinate, coordinate + 3, wfv.coordinate);
+    copy(normal, normal + 3, wfv.normal);
+    copy(textureCoordinate, textureCoordinate + 2, wfv.textureCoordinate);
+    return wfv;
+  }
+  
+  // Create uninitialized packed vertex
+  PackedWavefrontVertex() {}
+
+  // Create packed vertex
+  PackedWavefrontVertex(const WavefrontVertex& v) {
+    copy(v.coordinate, v.coordinate + 3, coordinate);
+    copy(v.normal, v.normal + 3, normal);
+    copy(v.textureCoordinate, v.textureCoordinate + 2, textureCoordinate);
+  }
+} __attribute__((packed));
+
+/** Packs and writes a vertex to a byte stream */
+struct PackAndWriteVertex {
+  public: 
+    BufferedWriter& writer;
+    
+    void operator()(const WavefrontVertex& v) {
+      PackedWavefrontVertex pv (v);
+      writer(v.coordinate[0]);
+      writer(v.coordinate[1]);
+      writer(v.coordinate[2]);
+      writer(v.normal[0]);
+      writer(v.normal[1]);
+      writer(v.normal[2]);
+      writer(v.textureCoordinate[0]);
+      writer(v.textureCoordinate[1]);
+    }
+    
+    PackAndWriteVertex(BufferedWriter& w) : writer(w) {
+    }
+};
+
+struct PackAndWriteString {
+  public:
+    BufferedWriter& writer;
+
+    void operator()(const string& v) {
+      writer((uint32_t) v.length());
+      for (string::const_iterator it = v.begin(); it != v.end(); it++) {
+        writer((uint8_t) *it);
+      }
+    }
+
+    PackAndWriteString(BufferedWriter& w) : writer(w) {
+    }
+};
+
+struct PackAndWriteTriangle {
+  public:
+    BufferedWriter& writer;
+
+    void operator()(const WavefrontTriangle& t) {
+      writer((uint32_t) t.indexes[0]);
+      writer((uint32_t) t.indexes[1]);
+      writer((uint32_t) t.indexes[2]);
+    }
+
+    PackAndWriteTriangle(BufferedWriter& w) : writer(w) {
+    }
+};

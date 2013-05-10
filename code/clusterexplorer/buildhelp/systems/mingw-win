@@ -1,0 +1,44 @@
+$(error Revamp windows makefile!)
+
+WINDOWS_BINARY=$(GAME_NAME).exe
+TARGET_PLATFORM_NAME=PC
+
+
+WIN_LIB_DIR=systems/sdl/win/libs/
+
+OPENCV_LIBS?=opencv_core240.dll opencv_imgproc240.dll opencv_features2d240.dll
+
+BUILDTARGET=$(WINDOWS_BINARY)
+FLAGS+=$(shell ./buildhelp/formulateSystemDefines.sh windows) -D_WIN32_WINNT=0x0501 -DBOOST_THREAD_USE_LIB
+LINKFLAGS+=
+LIBS+= boost_regex-mgw46-mt-s-1_51 \
+       boost_thread-mgw46-mt-s-1_51 \
+       boost_filesystem-mgw46-mt-s-1_51 \
+       boost_chrono-mgw46-mt-s-1_51 \
+       boost_system-mgw46-mt-s-1_51 \
+       DevIL ILUT mingw32 SDLmain SDL.dll SDL_mixer glew32 opengl32 glu32 ws2_32
+
+LIBPATHS+=$(WIN_LIB_DIR)SDL-1.2/lib/ \
+          $(WIN_LIB_DIR)SDL_mixer-1.2/lib/ \
+          $(WIN_LIB_DIR)DevIL/lib/ \
+          $(WIN_LIB_DIR)glew/lib/ \
+          $(WIN_LIB_DIR)zlib/ \
+          $(WIN_LIB_DIR)boost/lib/ \
+          $(WIN_LIB_DIR)opencv/lib/
+BOOST_INCLUDE_DIR:=$(shell find $(WIN_LIB_DIR)boost/include -maxdepth 2 -name boost)/../
+OPENCV_MODULE_INCLUDES:=$(addsuffix /include/,$(shell find $(WIN_LIB_DIR)opencv/modules/ -maxdepth 1 -type d))
+CINCLUDES+=$(WIN_LIB_DIR)SDL-1.2/include/SDL/ \
+           $(WIN_LIB_DIR)SDL_mixer-1.2/include/ \
+           $(WIN_LIB_DIR)DevIL/include/ \
+           $(WIN_LIB_DIR)glew/include/ \
+           $(WIN_LIB_DIR)zlib/ \
+           $(BOOST_INCLUDE_DIR) \
+           $(WIN_LIB_DIR)opencv/include/ \
+           $(OPENCV_MODULE_INCLUDES)
+SRC_DIRECTORIES+=systems/sdl/src/
+
+mingw-win: $(TARGETPREREQUISITES) $(BUILDTARGET)
+	@echo Built for windows
+
+ALLTARGETS=$(SYSTEM) $(BUILDTARGET)
+
