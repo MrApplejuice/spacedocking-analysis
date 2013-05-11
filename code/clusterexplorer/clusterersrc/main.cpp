@@ -1,4 +1,5 @@
 #include <engine/Engine.hpp>
+#include <engine/extensions/CommandLineArguments.hpp>
 
 #include <boost/shared_ptr.hpp>
 #include <boost/bind.hpp>
@@ -128,7 +129,18 @@ class ClusterEngine : public virtual GameEngine {
       GLFont::ResetFontDrawDefaultFunction = bind<void>(&FontSetupFunctions::resetDrawConfig, &gFontSetupFunctions);
       GLFont::ResetColorDrawDefaultFunction = bind<void>(&FontSetupFunctions::resetColorConfig, &gFontSetupFunctions);
 
-      cluster.readCluster("testcluster");
+      engine::ext::CommandLineArguments::List arguments;
+      if (engine::ext::CommandLineArgumentsRef cla = boost::dynamic_pointer_cast<engine::ext::CommandLineArguments>(getExtension(engine::ext::CommandLineArguments::NAME))) {
+        arguments = cla->getCommandLineArguments();
+      }
+
+      if (arguments.size() <= 1) {
+        cerr << "No cluster file given - exiting" << endl;
+        exit(1);
+      }
+      
+      cerr << "Reading cluster file '" << arguments[1] << "'" << endl;
+      cluster.readCluster(arguments[1]);
       clusterVisualizer = ClusterVisualizerRef(new ClusterVisualizer(*this, cluster));
       
       trackingPoint = false;

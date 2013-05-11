@@ -18,6 +18,8 @@
 #include "IL/il.h"
 #include "IL/ilut.h"
 
+#include "extensions/CommandLineArguments.hpp"
+
 // Make screen the same size as the iPhone's screen
 #define SCREEN_WIDTH  (480 * 2)
 #define SCREEN_HEIGHT (320 * 2)
@@ -262,6 +264,13 @@ float LinuxBackend :: getScreenAspectRatio() {
 }
 
 EngineExtensionRef LinuxBackend :: getExtension(const string& extensionName) {
+  // Search static extensions
+  foreach (EngineExtensionRef& eer, staticExtensions) {
+    if (eer->getName() == extensionName) {
+      return eer;
+    }
+  }
+  
   return SystemBackend::getExtension(extensionName);
 }
 
@@ -423,7 +432,9 @@ void LinuxBackend :: run() {
   }
 }
 
-LinuxBackend :: LinuxBackend() {
+LinuxBackend :: LinuxBackend(int argc, const char** argv) {
+  staticExtensions.push_back(EngineExtensionRef(new CommandLineArguments(argc, argv)));
+  
   doRun = true;
 
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))

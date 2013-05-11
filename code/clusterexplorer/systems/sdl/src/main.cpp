@@ -23,7 +23,7 @@ using namespace engine;
 
 int main(int argc, char** argv) {
   try {
-    shared_ptr<LinuxBackend> linuxBackend (new LinuxBackend());
+    shared_ptr<LinuxBackend> linuxBackend (new LinuxBackend(argc, const_cast<const char**>(argv)));
     EngineBaseClassRef baseClass = createEngine(linuxBackend);
     linuxBackend->run();
     baseClass.reset();

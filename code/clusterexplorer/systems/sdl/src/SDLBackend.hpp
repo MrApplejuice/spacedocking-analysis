@@ -1,5 +1,4 @@
-#ifndef LINUXBACKEND_HPP_
-#define LINUXBACKEND_HPP_
+#pragma once
 
 #include <vector>
 #include <string>
@@ -12,6 +11,8 @@
 
 #include <ClassTools.hpp>
 #include <engine/SystemBackend.hpp>
+
+#include "extensions/CommandLineArguments.hpp"
 
 /*
  * IMPORTANT
@@ -168,6 +169,8 @@ class LinuxBackend : public engine::SystemBackend, public boost::enable_shared_f
 
     engine::KeyPressChangeVector keyChanges;
     
+    std::vector<engine::EngineExtensionRef> staticExtensions;
+    
     virtual int findFreePlaybackIndex();
   public:
     // Implementation of SystemBackend
@@ -189,8 +192,7 @@ class LinuxBackend : public engine::SystemBackend, public boost::enable_shared_f
     // Runs until the game is terminated (e.g. the SDL window is closed)
     virtual void run();
     
-    LinuxBackend();
+    LinuxBackend(int argc, const char** argv);
     virtual ~LinuxBackend();
 };
 
-#endif // LINUXBACKEND_HPP_
