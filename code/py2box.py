@@ -13,6 +13,9 @@ importedBox = True
 if len(sys.argv) > 1:
    if sys.argv[1].lower() == 'pkg':
      from pkgbox import *
+   elif sys.argv[1].lower() == 'cluster':
+     from cluster import *
+     cluster_main(sys.argv[:1] + sys.argv[2:])
    elif sys.argv[1].lower() == 'guido':
      from guidobox import *
    else:
