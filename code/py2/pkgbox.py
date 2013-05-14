@@ -606,5 +606,4 @@ def doStuff():
   #selectedSample = selectDbSample(data, 1, 4);
   #sampleData = dbFeaturesToData(selectedSample['features']['features'])
   #matchData(sampleData, "data_GDC/IMG_1063.JPG", showOnlyMatchedFeatures=False)
-doStuff()
 
