@@ -32,9 +32,13 @@ def pairer(data):
     
     #define DISTANCE_FUNCTION euclidean
     
-    __kernel void computeDistance(int width, int indexCount, int groupCount, __global const float data[], __global const int groupIndexes[], __global const int indexes[], __global float distanceMat[]) {
+    __kernel void computeDistance(int maxDim, int width, int indexCount, int groupCount, __global const float data[], __global const int groupIndexes[], __global const int indexes[], __global float distanceMat[]) {
       int data_i = get_global_id(0);
       int data_j = get_global_id(1);
+      
+      if ((data_i >= maxDim) || (data_j >= maxDim)) {
+        return;
+      }
 
       // Ony fill the lower left side of the matrix:
       //  0 0 0 0 0
@@ -217,11 +221,14 @@ def pairer(data):
         return -i
     groupIndexes = hstack([array([negExclusives(i + 1) for j in flt(b)], dtype=int32) for i, b in enumerate(binIndexes)])
     groupIndexBufferCl = cl.Buffer(clContext, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=groupIndexes)
-    
+
     binIndexesBuffer = hstack(map(lambda x: array(flt(x), dtype=int32), binIndexes))
     indexBufferCl = cl.Buffer(clContext, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=binIndexesBuffer)
     
-    prev = pairerProg.computeDistance(clQueue, [binIndexesBuffer.shape[0], binIndexesBuffer.shape[0]], None, int32(data.shape[1]), int32(binIndexesBuffer.shape[0]), int32(len(binIndexes)), dataBufferCl, groupIndexBufferCl, indexBufferCl, distanceMatrixBufferCl)
+    lpacketsize = int(min(sqrt(clContext.devices[0].max_work_group_size), sqrt(min([clContext.devices[0].max_work_item_sizes[0], clContext.devices[0].max_work_item_sizes[1]]))))
+    gpacketdim = int(ceil(float(binIndexesBuffer.shape[0]) / float(lpacketsize)))
+
+    prev = pairerProg.computeDistance(clQueue, (gpacketdim * lpacketsize, gpacketdim * lpacketsize), (lpacketsize, lpacketsize), int32(binIndexesBuffer.shape[0]), int32(data.shape[1]), int32(binIndexesBuffer.shape[0]), int32(len(binIndexes)), dataBufferCl, groupIndexBufferCl, indexBufferCl, distanceMatrixBufferCl)
     cl.enqueue_copy(clQueue, distanceMatrix, distanceMatrixBufferCl, is_blocking=True, wait_for=(prev,))
     
     #dm2 = distanceMatrix
@@ -234,15 +241,15 @@ def pairer(data):
     #print dm2
     #print "Average difference cl<->python: ", sum(difMat) / len(difMat)
     #if any(difMat > 0.1):
-    #  w = where((odifMat > 0.1) * -isnan(odifMat))
-    #  #print zip(*w)
-    #  print zip(binIndexesBuffer, groupIndexes)
-    #  print w[0][0], w[1][0]
-    #  print "py:",dm1[w[0][0], w[1][0]]
-    #  print "cl:",dm2[w[0][0], w[1][0]]
-    #  print binIndexes[w[0][0]-1:w[0][0]+2]
-    #  print binIndexes[w[1][0]-1:w[1][0]+2]
-    #  sys.exit(0)
+      #w = where((odifMat > 0.1) * -isnan(odifMat))
+      #print zip(*w)
+      #print zip(binIndexesBuffer, groupIndexes)
+      #print w[0][0], w[1][0]
+      #print "py:",dm1[w[0][0], w[1][0]]
+      #print "cl:",dm2[w[0][0], w[1][0]]
+      #print binIndexes[w[0][0]-1:w[0][0]+2]
+      #print binIndexes[w[1][0]-1:w[1][0]+2]
+      #sys.exit(0)
     
     return distanceMatrix, distanceMatrixBufferCl
       
@@ -314,6 +321,7 @@ def pairer(data):
       
       ## Test stuff
       #bin_data = [[0, 63], [1, 5], [2, 68], [3, 60], [4, 2], [5, 70], [6, 37], [7, 61], [8, 83], [9, 67], [10, 8], [11, 85], [12, 20], [13, 48], [14, 64], [15, 32], [16, 3], [17, 33], [18, 94], [19, 50], [20, 14], [21, 96], [22, 46], [23, 10], [24, 24], [25, 7], [26, 45], [27, 97], [28, 63], [29, 84], [30, 68], [31, 0], [32, 89], [33, 91], [34, 65], [35, 19], [36, 62], [37, 22], [38, 92], [39, 5], [40, 47], [41, 92], [42, 73], [43, 2], [44, 52], [45, 17], [46, 55], [47, 37], [48, 83], [49, 35], [50, 93], [51, 27], [52, 72], [53, 80], [54, 37], [55, 41], [56, 28], [57, 50], [58, 25], [59, 82], [60, 83], [61, 99], [62, 93], [63, 36], [64, 52], [65, 99], [66, 66], [67, 69], [68, 84], [69, 5], [70, 83], [71, 67], [72, 58], [73, 99], [74, 83], [75, 34], [76, 31], [77, 6], [78, 46], [79, 19], [80, 92], [81, 70], [82, 15], [83, 1], [84, 45], [85, 67], [86, 50], [87, 75], [88, 56], [89, 19], [90, 70], [91, 95], [92, 10], [93, 35], [94, 43], [95, 1], [96, 9], [97, 18], [98, 48], [99, 56]]
+      #bin_data = [0, 1, 2, 3, 4, 5]
       #print bin_data
       #bin_offsets = [0]
       #bin_data_src_offset = [0] * len(bin_data)
