@@ -175,6 +175,10 @@ def pairer(data):
         }
       }
     }
+    
+    __kernel void writeMatField(const float value, const int row, const int column, const int stride, __global float mat[]) {
+      mat[row * stride + column] = value;
+    }
     """
     pairerProg = cl.Program(clContext, pairerCode).build()
 
@@ -300,33 +304,34 @@ def pairer(data):
       
       ## Do pairing
       i, j = min(i, j), max(i, j)
-      
-      ## Immediately start opencl matrix update even if uneccessary
-      ## OpenCL way
-      prevs = (pairerProg.minUnifyDistances(clQueue, [distanceMatrixSize], None, int32(i), int32(j), int32(distanceMatrixStride), clDistanceMatrix),)
-      prevs = (pairerProg.deleteRowAndCol(clQueue, [distanceMatrixSize], None, int32(j), int32(distanceMatrixSize), int32(distanceMatrixStride), clDistanceMatrix, wait_for=prevs),)
-      distanceMatrixSize -= 1
+#      print i,j
       
       # Track if this is a valid pairing with other bins
       doPairing = not any([isDirty[x] for x in (i, j)])
-      isDirty[i] = not doPairing
       
-      # !!!Can perhaps merge more points by marking points as dirty if they cannot be matched!!!
+      # !!!Can perhaps merge more points by marking points as dirty if they cannot be matched!!! <- testing right now
+      if doPairing:
+#        print "Pairing"
       
-      if doPairing:        
+        ## Adapt group to do the paring
         group[i] = [group[i], group[j]]
         group.pop(j)
+        isDirty[i] = False
         isDirty.pop(j)
         startedDirty.pop(j)
 
         ## Matrix update
-        # Started above
         
         # Py way
         #minCol = hstack((distanceMatrix[[i],:].T, distanceMatrix[:,[i]], distanceMatrix[[j],:].T, distanceMatrix[:,[j]])).min(1)
         #distanceMatrix[[i],:] = array([hstack((array([inf] * (i + 1)), minCol[i + 1:]))])
         #distanceMatrix[:,[i]] = array([hstack((minCol[:i], array([inf] * (distanceMatrix.shape[0] - i))))]).T
         #distanceMatrix = delete(delete(distanceMatrix, (j,), 1), (j,), 0)
+        
+        # Cl way
+        prevs = (pairerProg.minUnifyDistances(clQueue, [distanceMatrixSize], None, int32(i), int32(j), int32(distanceMatrixStride), clDistanceMatrix),)
+        prevs = (pairerProg.deleteRowAndCol(clQueue, [distanceMatrixSize], None, int32(j), int32(distanceMatrixSize), int32(distanceMatrixStride), clDistanceMatrix, wait_for=prevs),)
+        distanceMatrixSize -= 1
         
         doPairing = distanceMatrixSize > 1
         
@@ -342,6 +347,21 @@ def pairer(data):
         #cl.enqueue_copy(clQueue, distanceMatrixDeb, clDistanceMatrix, is_blocking=True, wait_for=prevs)
         #print "cl:"
         #print distanceMatrixDeb[:distanceMatrixSize,:distanceMatrixSize]
+      else:
+#        print "marking dirty"
+        
+        ## Mark pair as dirty
+        isDirty[i] = True
+        isDirty[j] = True
+        
+        ## Delete low value from matrix
+        # Py way
+        #distanceMatrix[i, j] = inf # UNTESTED
+        
+        # Cl way
+        prevs = (pairerProg.writeMatField(clQueue, [1], None, float32(inf), int32(i), int32(j), int32(distanceMatrixStride), clDistanceMatrix, wait_for=prevs),)
+
+        doPairing = not all(isDirty)
 
     cl.wait_for_events(prevs)
     
