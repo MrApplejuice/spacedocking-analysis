@@ -338,7 +338,7 @@ def pairer(data):
         ## Find minimum in distance matrix
         
         # Python way
-        i_py, j_py = unravel_index(distanceMatrix.argmin(), distanceMatrix.shape)
+        #i_py, j_py = unravel_index(distanceMatrix.argmin(), distanceMatrix.shape)
         
         # OpenCL way
         # Create minimum vectors
@@ -359,9 +359,6 @@ def pairer(data):
         
         ## Do pairing
         i, j = min(i, j), max(i, j)
-        
-        i, j = min(i_py, j_py), max(i_py, j_py)
-        print i, j
         
         ## Immediately start opencl matrix update even if uneccessary
         ## OpenCL way
@@ -384,10 +381,10 @@ def pairer(data):
           # Started above
           
           # Py way
-          minCol = hstack((distanceMatrix[[i],:].T, distanceMatrix[:,[i]], distanceMatrix[[j],:].T, distanceMatrix[:,[j]])).min(1)
-          distanceMatrix[[i],:] = array([hstack((array([inf] * (i + 1)), minCol[i + 1:]))])
-          distanceMatrix[:,[i]] = array([hstack((minCol[:i], array([inf] * (distanceMatrix.shape[0] - i))))]).T
-          distanceMatrix = delete(delete(distanceMatrix, (j,), 1), (j,), 0)
+          #minCol = hstack((distanceMatrix[[i],:].T, distanceMatrix[:,[i]], distanceMatrix[[j],:].T, distanceMatrix[:,[j]])).min(1)
+          #distanceMatrix[[i],:] = array([hstack((array([inf] * (i + 1)), minCol[i + 1:]))])
+          #distanceMatrix[:,[i]] = array([hstack((minCol[:i], array([inf] * (distanceMatrix.shape[0] - i))))]).T
+          #distanceMatrix = delete(delete(distanceMatrix, (j,), 1), (j,), 0)
           
           doPairing = distanceMatrixSize > 1
           
