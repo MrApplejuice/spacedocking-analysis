@@ -16,7 +16,7 @@ def pairer(data):
   """
   global clContext
   if clContext is None:
-    clContext = generateOpenCLContext(cl.device_type.GPU)
+    clContext = generateOpenCLContext(cl.device_type.CPU)
   clQueue = cl.CommandQueue(clContext)
     
   global pairerProg
@@ -79,7 +79,7 @@ def pairer(data):
       float currentMin = INFINITY;
       
       for (int i = 0; i < matsize; i++) {
-        if (mat[i * matsize + id] < currentMin) {
+        if (mat[i * matstride + id] < currentMin) {
           currentMin = mat[i * matstride + id];
         }
       }
@@ -102,7 +102,7 @@ def pairer(data):
       out[id] = currentMin;
     }
     
-    __kernel void reduceMinIndex(int vectorLen, __global const float vec[], int outIndex, __global int out[]) {
+    __kernel void reduceMinIndex(const int vectorLen, __global const float vec[], int outIndex, __global int out[]) {
       float currentMin = INFINITY;
       int currentMinIndex = -1;
 
@@ -114,6 +114,22 @@ def pairer(data):
       }
       
       out[outIndex] = currentMinIndex;
+    }
+    
+    __kernel void reduceMinRowIndex(const int matrixSize, const int matrixStride, __global const float mat[], __global int out[]) {
+      float currentMin = INFINITY;
+      int currentMinIndex = -1;
+      
+      __global const float* row = mat + matrixStride * out[0];
+
+      for (int i = 0; i < matrixSize; i++) {
+        if (row[i] < currentMin) {
+          currentMin = row[i];
+          currentMinIndex = i;
+        }
+      }
+      
+      out[1] = currentMinIndex;
     }
     
     __kernel void minUnifyDistances(int ui_min, int ui_max, int matstride, __global float mat[]) {
@@ -293,45 +309,49 @@ def pairer(data):
         bin_data += bins[bin_i + 1]
         bin_data_src_offset += [1] * len(bins[bin_i + 1])
         bin_offsets.append(1)
+        
+      set_printoptions(linewidth=200)
+      
+      ## Test stuff
+      #bin_data = [[0, 63], [1, 5], [2, 68], [3, 60], [4, 2], [5, 70], [6, 37], [7, 61], [8, 83], [9, 67], [10, 8], [11, 85], [12, 20], [13, 48], [14, 64], [15, 32], [16, 3], [17, 33], [18, 94], [19, 50], [20, 14], [21, 96], [22, 46], [23, 10], [24, 24], [25, 7], [26, 45], [27, 97], [28, 63], [29, 84], [30, 68], [31, 0], [32, 89], [33, 91], [34, 65], [35, 19], [36, 62], [37, 22], [38, 92], [39, 5], [40, 47], [41, 92], [42, 73], [43, 2], [44, 52], [45, 17], [46, 55], [47, 37], [48, 83], [49, 35], [50, 93], [51, 27], [52, 72], [53, 80], [54, 37], [55, 41], [56, 28], [57, 50], [58, 25], [59, 82], [60, 83], [61, 99], [62, 93], [63, 36], [64, 52], [65, 99], [66, 66], [67, 69], [68, 84], [69, 5], [70, 83], [71, 67], [72, 58], [73, 99], [74, 83], [75, 34], [76, 31], [77, 6], [78, 46], [79, 19], [80, 92], [81, 70], [82, 15], [83, 1], [84, 45], [85, 67], [86, 50], [87, 75], [88, 56], [89, 19], [90, 70], [91, 95], [92, 10], [93, 35], [94, 43], [95, 1], [96, 9], [97, 18], [98, 48], [99, 56]]
+      #print bin_data
+      #bin_offsets = [0]
+      #bin_data_src_offset = [0] * len(bin_data)
 
-      ########### TEEEEEEEEEST #########
-      bin_data = [0, 1, 2, 4, 3, 5]
-      bin_offsets = [0]
-      bin_data_src_offset = [0] * len(bin_data)
-
-      # Create a distance matrix (woohoo, will fit into memory now :D)
+      ## Create a distance matrix (woohoo, will fit into memory now :D)
       distanceMatrix, clDistanceMatrix = calcDistanceMatrix(bin_data, doIncludeFunc=lambda i: bin_data_src_offset[i] == 0)
-      distanceMatrixStride = distanceMatrix.shape[1]
-      if distanceMatrix.shape[0] != distanceMatrix.shape[1]:
-        raise Exception("distance matrix is not square")
+      distanceMatrixStride = len(bin_data)
+      distanceMatrixSize = len(bin_data)
       
       # Got all data... pair!
       doPairing = True
       
       minPosition = ndarray((2), dtype=int32)
+      minPosition[:] = 0
       clMinPosition = cl.Buffer(clContext, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=minPosition)
       
-      clColBuffer = cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrix.shape[0] * float32().nbytes)
-      clRowBuffer = cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrix.shape[1] * float32().nbytes)
+      clColBuffer = cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrixStride * float32().nbytes)
+      clRowBuffer = cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrixStride * float32().nbytes)
+      
+      prevs = ()
       while doPairing:
         ## Find minimum in distance matrix
         
         # Python way
-        #i, j = unravel_index(distanceMatrix.argmin(), distanceMatrix.shape)
+        i_py, j_py = unravel_index(distanceMatrix.argmin(), distanceMatrix.shape)
         
         # OpenCL way
         # Create minimum vectors
+        if len(prevs) > 0:
+          cl.wait_for_events(prevs)
         prevs = \
-          pairerProg.minCompressCol(clQueue, [distanceMatrix.shape[0]], None, int32(distanceMatrix.shape[1]), int32(distanceMatrixStride), clDistanceMatrix, clColBuffer),\
-          pairerProg.minCompressRow(clQueue, [distanceMatrix.shape[1]], None, int32(distanceMatrix.shape[0]), int32(distanceMatrixStride), clDistanceMatrix, clRowBuffer)
+          pairerProg.minCompressCol(clQueue, [distanceMatrixSize], None, int32(distanceMatrixSize), int32(distanceMatrixStride), clDistanceMatrix, clColBuffer),
         
-        vec = ndarray((distanceMatrix.shape[0]), dtype=float32)
-        cl.enqueue_copy(clQueue, vec, clColBuffer, is_blocking=True, wait_for=prevs)
-        
-        # Compress these vectors
+        # Compress these vectors to matrix offsets
         prevs = \
-          pairerProg.reduceMinIndex(clQueue, [1], None, int32(distanceMatrix.shape[0]), clColBuffer, int32(0), clMinPosition, wait_for=(prevs[0],)),\
-          pairerProg.reduceMinIndex(clQueue, [1], None, int32(distanceMatrix.shape[1]), clRowBuffer, int32(1), clMinPosition, wait_for=(prevs[1],))
+          pairerProg.reduceMinIndex(clQueue, [1], None, int32(distanceMatrixSize), clColBuffer, int32(0), clMinPosition, wait_for=prevs),
+        prevs = \
+          pairerProg.reduceMinRowIndex(clQueue, [1], None, int32(distanceMatrixSize), int32(distanceMatrixStride), clDistanceMatrix, clMinPosition, wait_for=prevs),
 
         # Load indexes
         cl.enqueue_copy(clQueue, minPosition, clMinPosition, is_blocking=True, wait_for=prevs)
@@ -339,6 +359,15 @@ def pairer(data):
         
         ## Do pairing
         i, j = min(i, j), max(i, j)
+        
+        i, j = min(i_py, j_py), max(i_py, j_py)
+        print i, j
+        
+        ## Immediately start opencl matrix update even if uneccessary
+        ## OpenCL way
+        prevs = (pairerProg.minUnifyDistances(clQueue, [distanceMatrixSize], None, int32(i), int32(j), int32(distanceMatrixStride), clDistanceMatrix),)
+        prevs = (pairerProg.deleteRowAndCol(clQueue, [distanceMatrixSize], None, int32(j), int32(distanceMatrixSize), int32(distanceMatrixStride), clDistanceMatrix, wait_for=prevs),)
+        distanceMatrixSize -= 1
         
         # Track if this is a valid pairing with other bins
         doPairing = all([bin_data_src_offset[x] == 0 for x in (i, j)])
@@ -352,28 +381,30 @@ def pairer(data):
           bin_data_src_offset.pop(j)
 
           ## Matrix update
-          
-          ## OpenCL way
-          prevs = (pairerProg.minUnifyDistances(clQueue, [distanceMatrix.shape[0]], None, int32(i), int32(j), int32(distanceMatrixStride), clDistanceMatrix),)
-          prevs = (pairerProg.deleteRowAndCol(clQueue, [distanceMatrix.shape[0]], None, int32(j), int32(distanceMatrix.shape[0]), int32(distanceMatrixStride), clDistanceMatrix, wait_for=prevs),)
+          # Started above
           
           # Py way
-          print distanceMatrix
           minCol = hstack((distanceMatrix[[i],:].T, distanceMatrix[:,[i]], distanceMatrix[[j],:].T, distanceMatrix[:,[j]])).min(1)
-          distanceMatrix[[i],:] = array([minCol])
-          distanceMatrix[:,[i]] = array([minCol]).T
-
+          distanceMatrix[[i],:] = array([hstack((array([inf] * (i + 1)), minCol[i + 1:]))])
+          distanceMatrix[:,[i]] = array([hstack((minCol[:i], array([inf] * (distanceMatrix.shape[0] - i))))]).T
           distanceMatrix = delete(delete(distanceMatrix, (j,), 1), (j,), 0)
           
-          # Debug stuff
-          print i, j
-          print distanceMatrix
-          distanceMatrix = ndarray((distanceMatrixStride, distanceMatrixStride), dtype=float32)
-          cl.enqueue_copy(clQueue, distanceMatrix, clDistanceMatrix, is_blocking=True, wait_for=prevs)
-          print distanceMatrix[:-1,:-1]
+          doPairing = distanceMatrixSize > 1
           
-        
-        sys.exit(0)
+          # Debug stuff
+          #print "cl:",i, j, " py:",i_py, j_py
+          #print distanceMatrix[i,j], distanceMatrix[i_py,j_py]
+          #print distanceMatrix.argmin()
+
+          #print "py:"
+          #print distanceMatrix
+
+          #distanceMatrixDeb = ndarray((distanceMatrixStride, distanceMatrixStride), dtype=float32)
+          #cl.enqueue_copy(clQueue, distanceMatrixDeb, clDistanceMatrix, is_blocking=True, wait_for=prevs)
+          #print "cl:"
+          #print distanceMatrixDeb[:distanceMatrixSize,:distanceMatrixSize]
+
+      cl.wait_for_events(prevs)        
         
       # Repack bins
       for offset in bin_offsets:
