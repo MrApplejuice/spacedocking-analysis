@@ -1,4 +1,4 @@
-from clustering import pairer, pairer_cl
+from clustering import pairer
 from readdata import loadData
 
 def cluster_main(args):
@@ -16,7 +16,7 @@ def cluster_main(args):
           featuresSources.append((sample, frame))
         
     print "pairing", len(features)
-    pairs = pairer_cl(features)
+    pairs = pairer(features)
         
     f = file(args[2], 'w')
     f.write("Works!\n")
