@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 
+# low-dimensional representation with t-sne:
+import sys
+sys.path.insert(0, './py2/tsne_python/')
+sys.path.insert(0, './py2/calc_tsne/')
+from tsne import *
+from calc_tsne import *
+import scipy.io
+
 from readdata import *
-from clustering import *
+#from clustering import *
 import os
 import pdb
 import cv2
@@ -9,6 +17,8 @@ import numpy as np;
 from matplotlib import pyplot as pl;
 from matplotlib.transforms import Affine2D
 from mpl_toolkits.axes_grid import AxesGrid
+
+import pylab as Plot
 
 # size(result) -> total number of samples
 # size(result[i]['frames']) == 5
@@ -27,6 +37,7 @@ x_index = 1;
 y_index = 0;
 z_index = 2;
 
+snapshot_time_interval = 0.25;
 
 def initializeFeatures(features, time_step):
 	n_features = len(features);
@@ -67,6 +78,9 @@ def getMatchedFeatures(sample, graphics=False):
 	
 	# maximum number of time steps a feature can go unobserved:
 	max_n_not_observed = 1;
+	
+	# minimum number of observations of a feature to be considered for the estimate:
+	min_memory = 4;
 	
 	# number of frames in a stored sequence:
 	n_frames = len(sample['frames']);
@@ -220,7 +234,6 @@ def getMatchedFeatures(sample, graphics=False):
 	n_features = len(FTS);
 	# only determine time-to-contact at the end:
 	memory_distribution = np.array([0] * n_features);
-	min_memory = 3;
 	TTC_estimates = [];
 	n_features_used_for_estimate = 0;
 	for ft in range(n_features):
@@ -245,6 +258,8 @@ def getMatchedFeatures(sample, graphics=False):
 		TimeToContact = np.median(TTC_estimates);
 	else:
 		TimeToContact = 1E3;
+		
+	TimeToContact *= snapshot_time_interval;
 	
 	return (TimeToContact, n_features_used_for_estimate);
 	
@@ -255,6 +270,7 @@ def determineTTCLinearFit(feature):
 	n_ts = len(feature['time_steps']);
 	A = np.ones([n_ts, 2]);
 	A[:,1] = feature['time_steps'];
+	# to sqrt or not to sqrt?
 	b = np.array(feature['sizes']);
 	(x, residuals, rnk, s) = np.linalg.lstsq(A,b);
 	
@@ -664,6 +680,67 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
 		
 		
+def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
+	"""Runs t-SNE low dimension embedding on the AstroDrone database """
+	
+	# load the database, and put the features in the right format:
+	result = loadData(test_dir + "/" + data_name);
+	
+	if(selectSubset):
+		# select a number of random samples:
+		n_samples = len(result);
+		rand_inds = np.random.permutation(range(n_samples));
+		result = [result[i] for i in rand_inds[0:n_selected_samples].tolist()];
+		
+	# iterate over the data:
+	n_samples = len(result);
+	n_frames = len(result[0]['frames']);
+	# X will contain the feature descriptor data:
+	X = [];
+	# the following arrays will contain feature properties that can be seen as labels.
+	responses = [];
+	sizes = [];
+	orientations = [];
+	for sample in result:
+		for f in range(n_frames):
+			# get frame:
+			frame = sample['frames'][f];
+			
+			# process features:
+			for ft in frame['features']['features']:
+				X.append(ft['descriptor']);
+				responses.append(ft['response']);
+				sizes.append(ft['size']);
+				orientations.append(ft['angle']);
+	
+	# run t-SNE on the feature database:
+	scipy.io.savemat('X.mat', mdict={'X': X});
+	scipy.io.savemat('responses.mat', mdict={'responses': responses});
+	scipy.io.savemat('orientations.mat', mdict={'orientations': orientations});
+	scipy.io.savemat('sizes.mat', mdict={'sizes': sizes});
+	#np.savetxt('X.txt', X);
+	#np.savetxt('responses.txt', responses);
+	#np.savetxt('sizes.txt', sizes);
+	#np.savetxt('orientations.txt', orientations);
+	
+	## transform X to a Math array:
+	#XM = Math.array(X);
+	#
+	## perform t-SNE:
+	## Y = calc_tsne(XM);
+	#Y = tsne(XM, 2, 50, 5.0);
+	#
+	## plot the results:
+	#pl.figure();
+	#Plot.scatter(Y[:,0], Y[:,1], 20, responses);
+	#pl.title('responses');
+	#pl.figure();
+	#Plot.scatter(Y[:,0], Y[:,1], 20, sizes);
+	#pl.title('sizes');
+	#pl.figure();
+	#Plot.scatter(Y[:,0], Y[:,1], 20, orientations);
+	#pl.title('orientations');
+		
 def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True):
 	# read the data from the database:
 	result = loadData(test_dir + "/" + data_name);
@@ -798,11 +875,20 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	pl.hist(np.array(sizes), 60);
 	pl.title('Feature size distribution in database');
 	
+	# show a histogram of yaw angles:
+	pl.figure();
+	pl.hist(yaw, 60);
+	pl.title('Histogram of yaw angles');
+	
 	if(analyze_TTC):
 	
 		# plot TTC and GT_TTC in the same figure:
 		pl.figure();
 		pl.plot(TTC, GT_TTC, 'x');
+		pl.hold=True;
+		min_TTC = np.min(TTC);
+		max_TTC = np.max(TTC);
+		pl.plot([min_TTC, max_TTC], [min_TTC, max_TTC], color=(0.0,1.0,0.0));
 		pl.title('TTC vs ground truth TTC')
 	
 		pl.figure();
