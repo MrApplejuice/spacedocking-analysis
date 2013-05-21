@@ -77,6 +77,17 @@ def pairer(data):
       }
     }
     
+    __kernel void eraseBiggerThan(const int maxDim, const float limit, const int matstride, __global float mat[]) {
+      if ((get_global_id(0) >= maxDim) || (get_global_id(1) >= maxDim)) {
+        return;
+      }
+    
+      __global float* value = mat + get_global_id(0) * matstride + get_global_id(1);
+      if (*value >= limit) {
+        *value = INFINITY;
+      }
+    }
+    
     __kernel void minCompressRow(int matsize, int matstride, __global const float mat[], __global float out[]) {
       const int id = get_global_id(0);
       
@@ -124,12 +135,14 @@ def pairer(data):
       float currentMin = INFINITY;
       int currentMinIndex = -1;
       
-      __global const float* row = mat + matrixStride * out[0];
+      if (out[0] >= 0) {
+        __global const float* row = mat + matrixStride * out[0];
 
-      for (int i = 0; i < matrixSize; i++) {
-        if (row[i] < currentMin) {
-          currentMin = row[i];
-          currentMinIndex = i;
+        for (int i = 0; i < matrixSize; i++) {
+          if (row[i] < currentMin) {
+            currentMin = row[i];
+            currentMinIndex = i;
+          }
         }
       }
       
@@ -220,7 +233,7 @@ def pairer(data):
     else:
       return euclidean(data[c1], data[c2])
       
-  def calcDistanceMatrix(binIndexes, doIncludeFunc=None):
+  def calcDistanceMatrix(binIndexes, doIncludeFunc=None, pairDistanceLimit=None):
     # Calculate with python
     #distanceMatrix = ndarray((len(binIndexes), len(binIndexes)))
     #distanceMatrix[:,:] = inf
@@ -255,6 +268,10 @@ def pairer(data):
     gpacketdim = int(ceil(float(binIndexesBuffer.shape[0]) / float(lpacketsize)))
 
     prev = pairerProg.computeDistance(clQueue, (gpacketdim * lpacketsize, gpacketdim * lpacketsize), (lpacketsize, lpacketsize), int32(binIndexesBuffer.shape[0]), int32(data.shape[1]), int32(binIndexesBuffer.shape[0]), int32(len(binIndexes)), dataBufferCl, groupIndexBufferCl, indexBufferCl, distanceMatrixBufferCl)
+    if not pairDistanceLimit is None:
+      gpacketdim = int(ceil(float(len(binIndexes)) / float(lpacketsize)))
+      prev = pairerProg.eraseBiggerThan(clQueue, (gpacketdim * lpacketsize, gpacketdim * lpacketsize), (lpacketsize, lpacketsize), int32(len(binIndexes)), float32(pairDistanceLimit), int32(len(binIndexes)), distanceMatrixBufferCl, wait_for=(prev,))
+    
     cl.enqueue_copy(clQueue, distanceMatrix, distanceMatrixBufferCl, is_blocking=True, wait_for=(prev,))
     
     #dm2 = distanceMatrix
@@ -279,13 +296,13 @@ def pairer(data):
     
     return distanceMatrix, distanceMatrixBufferCl
 
-  def pairGroup(group, dirtyElements):
+  def pairGroup(group, dirtyElements, pairDistanceLimit=None):
     group = list(group)
     startedDirty = list(dirtyElements)
     isDirty = array(dirtyElements, dtype=uint8)
       
     ## Create a distance matrix (woohoo, will fit into memory now :D)
-    distanceMatrix, clDistanceMatrix = calcDistanceMatrix(group, doIncludeFunc=lambda i: not isDirty[i])
+    distanceMatrix, clDistanceMatrix = calcDistanceMatrix(group, doIncludeFunc=lambda i: not isDirty[i], pairDistanceLimit=pairDistanceLimit)
     distanceMatrixStride = len(group)
     distanceMatrixSize = len(group)
     
@@ -329,7 +346,7 @@ def pairer(data):
       i, j = min(i, j), max(i, j)
       
       # Track if this is a valid pairing with other bins
-      doPairing = not any([isDirty[x] for x in (i, j)])
+      doPairing = (i >= 0) and (not any([isDirty[x] for x in (i, j)]))
       
       # !!!Can perhaps merge more points by marking points as dirty if they cannot be matched!!! <- testing right now
       if doPairing:
@@ -355,6 +372,8 @@ def pairer(data):
         distanceMatrixSize -= 1
         
         doPairing = distanceMatrixSize > 1
+      elif i < 0:
+        pass # Nothing to do... nothing to match... quit!
       else:
         ## Mark pair as dirty
         isDirty[i] = True
@@ -390,25 +409,22 @@ def pairer(data):
     
     return [g for i, g in enumerate(group) if not startedDirty[i]]
 
-  indexes = list(range(len(data)))
-  
-  # Start with binned pairing
-  if len(data) > 10000:
+  def preSplitUnifyGroupByPC(group, target_group_size=1000):
     pol_data_covar = cov(data, rowvar=0)
     pcs = eig(pol_data_covar)
     
     # Calculate groups and sort data samples into the groups
-    TARGET_GROUP_SIZE = 300
     prinComp = pcs[1][0]
-    projections = [dot(pcs[1][0], d) for d in data]
+    projections = [dot(pcs[1][0], data[i]) for i in group]
     bin_limits = [x(projections) for x in (min, max)]
-    bin_width = float(bin_limits[1] - bin_limits[0]) / float(len(projections) / TARGET_GROUP_SIZE)
-    bins = map(list, [[]] * (len(projections) / TARGET_GROUP_SIZE))
+    bin_width = float(bin_limits[1] - bin_limits[0]) / float(len(projections) / target_group_size)
+    bins = map(list, [[]] * (len(projections) / target_group_size))
+    bin_sizes = [bin_width] * len(bins)
     
     # Distribute data over bins
-    for sample_i, proj in enumerate(projections):
+    for gi, proj in zip(group, projections):
       bin_i = max(min(int((proj - bin_limits[0]) / bin_width), len(bins) - 1), 0)
-      bins[bin_i].append(sample_i)
+      bins[bin_i].append(group[gi])
       
     print "Average size:",float(sum(map(len, bins))) / len(bins)
     print "Bin count:",len(bins)
@@ -416,20 +432,22 @@ def pairer(data):
     # Perform bin cleanup: unify bins with 1 or less elements with neighbor bins
     bin_i = 0
     while (bin_i < len(bins)) and (len(bins) > 1):
-      if len(bins[bin_i]) <= TARGET_GROUP_SIZE / 2:
+      if len(bins[bin_i]) <= target_group_size * 3 / 4:
         if bin_i <= len(bins) / 2:
           bins[bin_i] = bins[bin_i] + bins[bin_i + 1]
           bins.pop(bin_i + 1)
+          bin_sizes[bin_i] += bin_sizes.pop(bin_i + 1)
         else:
           bins[bin_i] = bins[bin_i] + bins[bin_i - 1]
           bins.pop(bin_i - 1)
+          bin_sizes[bin_i] += bin_sizes[bin_i - 1]
+          bin_sizes.pop(bin_i - 1)
           bin_i -= 1
       else:
         bin_i += 1
         
     print "Average size:",float(sum(map(len, bins))) / len(bins)
     print "Bin count:",len(bins)
-        
 
     # Iterate over bins and create pairs for every bin until it would
     # be paired with a node from a neighbor bin
@@ -437,17 +455,19 @@ def pairer(data):
       print "Before:", len(bins[bin_i])
       
       bin_data = list(bins[bin_i])
+      max_distance = bin_sizes[bin_i]
       bin_data_dirty = [False] * len(bins[bin_i])
       if bin_i > 0:
         bin_data += bins[bin_i - 1]
         bin_data_dirty += [True] * len(bins[bin_i - 1])
+        max_distance = min(max_distance, bin_sizes[bin_i - 1])
       if bin_i < len(bins) - 1:
         bin_data += bins[bin_i + 1]
         bin_data_dirty += [True] * len(bins[bin_i + 1])
-        
-      set_printoptions(linewidth=200)
+        max_distance = min(max_distance, bin_sizes[bin_i + 1])
       
       ## Test stuff
+      #set_printoptions(linewidth=200)
       #bin_data = [[0, 63], [1, 5], [2, 68], [3, 60], [4, 2], [5, 70], [6, 37], [7, 61], [8, 83], [9, 67], [10, 8], [11, 85], [12, 20], [13, 48], [14, 64], [15, 32], [16, 3], [17, 33], [18, 94], [19, 50], [20, 14], [21, 96], [22, 46], [23, 10], [24, 24], [25, 7], [26, 45], [27, 97], [28, 63], [29, 84], [30, 68], [31, 0], [32, 89], [33, 91], [34, 65], [35, 19], [36, 62], [37, 22], [38, 92], [39, 5], [40, 47], [41, 92], [42, 73], [43, 2], [44, 52], [45, 17], [46, 55], [47, 37], [48, 83], [49, 35], [50, 93], [51, 27], [52, 72], [53, 80], [54, 37], [55, 41], [56, 28], [57, 50], [58, 25], [59, 82], [60, 83], [61, 99], [62, 93], [63, 36], [64, 52], [65, 99], [66, 66], [67, 69], [68, 84], [69, 5], [70, 83], [71, 67], [72, 58], [73, 99], [74, 83], [75, 34], [76, 31], [77, 6], [78, 46], [79, 19], [80, 92], [81, 70], [82, 15], [83, 1], [84, 45], [85, 67], [86, 50], [87, 75], [88, 56], [89, 19], [90, 70], [91, 95], [92, 10], [93, 35], [94, 43], [95, 1], [96, 9], [97, 18], [98, 48], [99, 56]]
       #bin_data = [2, 1, 4, 3, 0, 5]
       #bin_data_dirty = [False, False, False, True, True, True]
@@ -455,13 +475,27 @@ def pairer(data):
       #bin_offsets = [0]
       #bin_data_src_offset = [0] * len(bin_data)
 
-      bin_data = pairGroup(bin_data, bin_data_dirty)
+      bin_data = pairGroup(bin_data, bin_data_dirty, max_distance)
         
       # Repack bins
       bins[bin_i] = bin_data
       
       print "After:", len(bins[bin_i])
+      sys.stdout.flush()
+      
+    print map(len, bins)
+    result = []
+    for b in bins:
+      result += b
+    return result
 
+  indexes = list(range(len(data)))
+  
+  # Start with binned pairing
+  if len(data) > 10000:
+    indexes = preSplitUnifyGroupByPC(indexes, target_group_size=400)
+
+  print "Precluster count:", len(indexes)
       
   return ()
 
