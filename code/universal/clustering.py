@@ -410,21 +410,68 @@ def pairer(data):
     return [g for i, g in enumerate(group) if not startedDirty[i]]
 
   def preSplitUnifyGroupByPC(group, target_group_size=1000):
-    pol_data_covar = cov(data, rowvar=0)
+    pol_data_covar = cov(data[(tuple(flatten(group)),)], rowvar=0)
     pcs = eig(pol_data_covar)
     
     # Calculate groups and sort data samples into the groups
     prinComp = pcs[1][0]
-    projections = [dot(pcs[1][0], data[i]) for i in group]
-    bin_limits = [x(projections) for x in (min, max)]
-    bin_width = float(bin_limits[1] - bin_limits[0]) / float(len(projections) / target_group_size)
+    project = lambda x: dot(prinComp, x)
+
+    # Create a flattened version of group
+    class FlatGroupData:
+      def __init__(self, index, dataIndex, isGroup):
+        self.index = index
+        self.dataIndex = dataIndex
+        self.isGroup = isGroup
+    def enumElement(e):
+      if type(e) is int:
+        return (e, )
+      else:
+        return flatten(e)
+    
+    flatGroup = list(flatten([[FlatGroupData(gi, i, not type(g) is int) for i in enumElement(g)] for gi, g in enumerate(group)]))
+
+    # Calculate all projections to be able to infer bin limits along prinComp
+    projections = [project(data[x]) for x in flatten(group)]
+    bin_limits = [f(projections) for f in (min, max)]
+    
+    bin_width = float(bin_limits[1] - bin_limits[0]) / float(len(group) / target_group_size)
     bins = map(list, [[]] * (len(projections) / target_group_size))
     bin_sizes = [bin_width] * len(bins)
-    
+    macro_bin = []
+
     # Distribute data over bins
-    for gi, proj in zip(group, projections):
-      bin_i = max(min(int((proj - bin_limits[0]) / bin_width), len(bins) - 1), 0)
-      bins[bin_i].append(group[gi])
+    currentIndex = None
+    currentBin = None
+    for gsample, proj in zip(flatGroup, projections):
+      if currentIndex == gsample.index:
+        thisBin = max(min(int((proj - bin_limits[0]) / bin_width), len(bins) - 1), 0)
+        if thisBin != currentBin:
+          currentBin = None
+      else:
+        if not currentIndex is None:
+          if currentBin is None:
+            if not gsample.isGroup:
+              raise Exception("This should not have happened")
+            macro_bin.append(group[currentIndex])
+          else:
+            bins[currentBin].append(group[currentIndex])
+        
+        currentBin = max(min(int((proj - bin_limits[0]) / bin_width), len(bins) - 1), 0)
+        currentIndex = gsample.index
+    
+    if not currentIndex is None:
+      if currentBin is None:
+        if not gsample.isGroup:
+          raise Exception("This should not have happened")
+        macro_bin.append(group[currentIndex])
+      else:
+        bins[currentBin].append(group[currentIndex])
+    
+
+    #for gi, proj in zip(flatten(group), projections):
+    #  bin_i = max(min(int((proj - bin_limits[0]) / bin_width), len(bins) - 1), 0)
+    #  bins[bin_i].append(group[gi])
       
     print "Average size:",float(sum(map(len, bins))) / len(bins)
     print "Bin count:",len(bins)
@@ -454,9 +501,9 @@ def pairer(data):
     for bin_i in range(len(bins)):
       print "Before:", len(bins[bin_i])
       
-      bin_data = list(bins[bin_i])
+      bin_data = list(bins[bin_i]) + macro_bin
       max_distance = bin_sizes[bin_i]
-      bin_data_dirty = [False] * len(bins[bin_i])
+      bin_data_dirty = [False] * len(bins[bin_i]) + [True] * len(macro_bin)
       if bin_i > 0:
         bin_data += bins[bin_i - 1]
         bin_data_dirty += [True] * len(bins[bin_i - 1])
