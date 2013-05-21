@@ -175,9 +175,31 @@ def pairer(data):
         }
       }
     }
+
+    __kernel void deleteBoolVectorElement(const int index, const int len, __global char vec[]) {
+      for (int i = index; i < len - 1; i++) {
+        vec[i] = vec[i + 1];
+      }
+    }
     
-    __kernel void writeMatField(const float value, const int row, const int column, const int stride, __global float mat[]) {
-      mat[row * stride + column] = value;
+    __kernel void crossDirty(const int index, const int matstride, const int matsize, __global float mat[], __global char dirtVector[]) {
+      const int id = get_global_id(0);
+      dirtVector[index] = true;
+      
+      if (id == 0) {
+        __global float* row = mat + index * matstride;
+        for (int i = 0; i < matsize; i++) {
+          if (dirtVector[i]) {
+            row[i] = INFINITY;
+          }
+        }
+      } else {
+        for (int i = 0; i < matsize; i++) {
+          if (dirtVector[i]) {
+            mat[i * matstride + index] = INFINITY;
+          }
+        }
+      }
     }
     """
     pairerProg = cl.Program(clContext, pairerCode).build()
@@ -260,7 +282,7 @@ def pairer(data):
   def pairGroup(group, dirtyElements):
     group = list(group)
     startedDirty = list(dirtyElements)
-    isDirty = list(dirtyElements)
+    isDirty = array(dirtyElements, dtype=uint8)
       
     ## Create a distance matrix (woohoo, will fit into memory now :D)
     distanceMatrix, clDistanceMatrix = calcDistanceMatrix(group, doIncludeFunc=lambda i: not isDirty[i])
@@ -275,8 +297,9 @@ def pairer(data):
     minPosition[:] = 0
     clMinPosition = cl.Buffer(clContext, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=minPosition)
     
-    clColBuffer = cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrixStride * float32().nbytes)
-    clRowBuffer = cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrixStride * float32().nbytes)
+    clColBuffer =  cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrixStride * float32().nbytes)
+    clRowBuffer =  cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrixStride * float32().nbytes)
+    clDirtVector = cl.Buffer(clContext, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=isDirty)
     
     prevs = ()
     while doPairing:
@@ -304,20 +327,17 @@ def pairer(data):
       
       ## Do pairing
       i, j = min(i, j), max(i, j)
-#      print i,j
       
       # Track if this is a valid pairing with other bins
       doPairing = not any([isDirty[x] for x in (i, j)])
       
       # !!!Can perhaps merge more points by marking points as dirty if they cannot be matched!!! <- testing right now
       if doPairing:
-#        print "Pairing"
-      
         ## Adapt group to do the paring
         group[i] = [group[i], group[j]]
         group.pop(j)
         isDirty[i] = False
-        isDirty.pop(j)
+        isDirty = delete(isDirty, j)
         startedDirty.pop(j)
 
         ## Matrix update
@@ -330,39 +350,42 @@ def pairer(data):
         
         # Cl way
         prevs = (pairerProg.minUnifyDistances(clQueue, [distanceMatrixSize], None, int32(i), int32(j), int32(distanceMatrixStride), clDistanceMatrix),)
-        prevs = (pairerProg.deleteRowAndCol(clQueue, [distanceMatrixSize], None, int32(j), int32(distanceMatrixSize), int32(distanceMatrixStride), clDistanceMatrix, wait_for=prevs),)
+        prevs = (pairerProg.deleteRowAndCol(clQueue, [distanceMatrixSize], None, int32(j), int32(distanceMatrixSize), int32(distanceMatrixStride), clDistanceMatrix, wait_for=prevs),\
+                 pairerProg.deleteBoolVectorElement(clQueue, [1], None, int32(j), int32(distanceMatrixSize), clDirtVector, wait_for=prevs))
         distanceMatrixSize -= 1
         
         doPairing = distanceMatrixSize > 1
-        
-        # Debug stuff
-        #print "cl:",i, j, " py:",i_py, j_py
-        #print distanceMatrix[i,j], distanceMatrix[i_py,j_py]
-        #print distanceMatrix.argmin()
-
-        #print "py:"
-        #print distanceMatrix
-
-        #distanceMatrixDeb = ndarray((distanceMatrixStride, distanceMatrixStride), dtype=float32)
-        #cl.enqueue_copy(clQueue, distanceMatrixDeb, clDistanceMatrix, is_blocking=True, wait_for=prevs)
-        #print "cl:"
-        #print distanceMatrixDeb[:distanceMatrixSize,:distanceMatrixSize]
       else:
-#        print "marking dirty"
-        
         ## Mark pair as dirty
         isDirty[i] = True
         isDirty[j] = True
         
         ## Delete low value from matrix
         # Py way
-        #distanceMatrix[i, j] = inf # UNTESTED
-        
+        # - no py way yet - need to cross out a cross shape in matrix
+
         # Cl way
-        prevs = (pairerProg.writeMatField(clQueue, [1], None, float32(inf), int32(i), int32(j), int32(distanceMatrixStride), clDistanceMatrix, wait_for=prevs),)
+        prevs = (pairerProg.crossDirty(clQueue, [2], None, int32(i), int32(distanceMatrixStride), int32(distanceMatrixSize), clDistanceMatrix, clDirtVector, wait_for=prevs),)
+        prevs = (pairerProg.crossDirty(clQueue, [2], None, int32(j), int32(distanceMatrixStride), int32(distanceMatrixSize), clDistanceMatrix, clDirtVector, wait_for=prevs),)
 
-        doPairing = not all(isDirty)
+        doPairing = sum([1 for d in isDirty if not d]) > 1
 
+      # Debug stuff
+      #print "cl:",i, j, " py:",i_py, j_py
+      #print distanceMatrix[i,j], distanceMatrix[i_py,j_py]
+      #print distanceMatrix.argmin()
+
+      #print "py:"
+      #print distanceMatrix
+
+      #distanceMatrixDeb = ndarray((distanceMatrixStride, distanceMatrixStride), dtype=float32)
+      #cl.enqueue_copy(clQueue, distanceMatrixDeb, clDistanceMatrix, is_blocking=True, wait_for=prevs)
+      #print "cl:"
+      #print distanceMatrixDeb[:distanceMatrixSize,:distanceMatrixSize]
+      
+      #cl.enqueue_copy(clQueue, isDirty, clDirtVector, is_blocking=True, wait_for=prevs)
+      #print "CopDirt",isDirty
+    
     cl.wait_for_events(prevs)
     
     return [g for i, g in enumerate(group) if not startedDirty[i]]
@@ -426,7 +449,8 @@ def pairer(data):
       
       ## Test stuff
       #bin_data = [[0, 63], [1, 5], [2, 68], [3, 60], [4, 2], [5, 70], [6, 37], [7, 61], [8, 83], [9, 67], [10, 8], [11, 85], [12, 20], [13, 48], [14, 64], [15, 32], [16, 3], [17, 33], [18, 94], [19, 50], [20, 14], [21, 96], [22, 46], [23, 10], [24, 24], [25, 7], [26, 45], [27, 97], [28, 63], [29, 84], [30, 68], [31, 0], [32, 89], [33, 91], [34, 65], [35, 19], [36, 62], [37, 22], [38, 92], [39, 5], [40, 47], [41, 92], [42, 73], [43, 2], [44, 52], [45, 17], [46, 55], [47, 37], [48, 83], [49, 35], [50, 93], [51, 27], [52, 72], [53, 80], [54, 37], [55, 41], [56, 28], [57, 50], [58, 25], [59, 82], [60, 83], [61, 99], [62, 93], [63, 36], [64, 52], [65, 99], [66, 66], [67, 69], [68, 84], [69, 5], [70, 83], [71, 67], [72, 58], [73, 99], [74, 83], [75, 34], [76, 31], [77, 6], [78, 46], [79, 19], [80, 92], [81, 70], [82, 15], [83, 1], [84, 45], [85, 67], [86, 50], [87, 75], [88, 56], [89, 19], [90, 70], [91, 95], [92, 10], [93, 35], [94, 43], [95, 1], [96, 9], [97, 18], [98, 48], [99, 56]]
-      #bin_data = [0, 1, 2, 3, 4, 5]
+      #bin_data = [2, 1, 4, 3, 0, 5]
+      #bin_data_dirty = [False, False, False, True, True, True]
       #print bin_data
       #bin_offsets = [0]
       #bin_data_src_offset = [0] * len(bin_data)
