@@ -1,5 +1,5 @@
-function apply_BH_tSNE(n_selected, preplexity, theta)
-% function apply_BH_tSNE(n_selected)
+function apply_BH_tSNE(n_selected, perplexity, theta, dims)
+% function apply_BH_tSNE(n_selected, perplexity, theta, dims)
 
 addpath('../py2/bh_tsne');
 
@@ -9,13 +9,17 @@ end
 if(~exist('theta', 'var') || isempty(theta))
     theta = 0.5;
 end
+if(~exist('dims', 'var') || isempty(dims))
+    dims = 30;
+end
+
+
 load('orientations.txt')
 load('responses.txt')
 load('sizes.txt')
 load('X.mat')
 
 n_samples = size(X,1);
-dims = size(X,2);
 
 % select a subset in the interest of not running out of memory:
 if(~exist('n_selected') || isempty(n_selected))
@@ -23,7 +27,7 @@ if(~exist('n_selected') || isempty(n_selected))
 else
     inds = randperm(n_samples);
     inds = inds(1:n_selected);
-    X = X(inds);
+    X = X(inds,:);
     save('inds', 'inds');
     orientations = orientations(inds);
     responses = responses(inds);

@@ -235,12 +235,14 @@ def getMatchedFeatures(sample, graphics=False):
 	# only determine time-to-contact at the end:
 	memory_distribution = np.array([0] * n_features);
 	TTC_estimates = [];
+	FTS_USED = [];
 	n_features_used_for_estimate = 0;
 	for ft in range(n_features):
 		memory_size = len(FTS[ft]['sizes'])
 		memory_distribution[ft] = memory_size;
 		if(memory_size >= min_memory):
 			TTC_estimates.append(determineTTCLinearFit(FTS[ft]));
+			FTS_USED = FTS_USED + FTS[ft];
 			n_features_used_for_estimate += 1;
 			
 	if(ttc_graphics):
@@ -261,7 +263,7 @@ def getMatchedFeatures(sample, graphics=False):
 		
 	TimeToContact *= snapshot_time_interval;
 	
-	return (TimeToContact, n_features_used_for_estimate);
+	return (TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED);
 	
 
 def determineTTCLinearFit(feature):
@@ -781,6 +783,10 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		GT_TTC = np.array([0.0] * n_samples); #np.zeros([n_samples, n_frames-1]);
 		epsi = 1E-3;#1E-4 * np.ones([1, n_frames-1]);
 		R = np.zeros([2,2]);
+		# the following lists contain the information per individual feature:
+		TTC_ests = [];
+		FTS_descr = [];
+		
 		
 	for sample in result:
 	
@@ -819,7 +825,13 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		
 		if(analyze_TTC):
 			# time to contact estimated with feature sizes:
-			(TTC[sp], NF[sp]) = getMatchedFeatures(sample);
+			(TTC[sp], NF[sp], TTC_estimates, FTS_USED) = getMatchedFeatures(sample);
+			
+			TTC_ests = TTC_ests + TTC_estimates;
+			n_fts = len(FTS_USED);
+			for ft in range(n_fts):
+				# we add the last descriptor:
+				FTS_descr = FTS_descr + FTS_USED[ft]['descriptors'][-1];
 			
 			# Ground truth TTC:
 			
@@ -882,6 +894,10 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	
 	if(analyze_TTC):
 	
+		# save the matrix of descriptors with corresponding TTC values for further analysis:
+		scipy.io.savemat('FTS_descr.mat', mdict={'FTS_descr': FTS_descr});
+		scipy.io.savemat('TTC_ests.mat', mdict={'TTC_ests': TTC_ests});
+		
 		# plot TTC and GT_TTC in the same figure:
 		pl.figure();
 		pl.plot(TTC, GT_TTC, 'x');
