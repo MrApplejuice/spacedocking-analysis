@@ -242,7 +242,7 @@ def getMatchedFeatures(sample, graphics=False):
 		memory_distribution[ft] = memory_size;
 		if(memory_size >= min_memory):
 			TTC_estimates.append(determineTTCLinearFit(FTS[ft]));
-			FTS_USED = FTS_USED + FTS[ft];
+			FTS_USED = FTS_USED + [FTS[ft]];
 			n_features_used_for_estimate += 1;
 			
 	if(ttc_graphics):
@@ -744,6 +744,11 @@ def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, 
 	#pl.title('orientations');
 		
 def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True):
+	""" Plots simple statistics from the database such as where the photos were taken, etc.
+		If analyze_TTC = True, it also tracks features over multiple frames and assigns Time-To-Contacs to them.
+		If selectSubset = True, only 10 samples from the database are processed.
+	"""
+
 	# read the data from the database:
 	result = loadData(test_dir + "/" + data_name);
 	
@@ -786,7 +791,7 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		# the following lists contain the information per individual feature:
 		TTC_ests = [];
 		FTS_descr = [];
-		
+		Dists_fts = [];
 		
 	for sample in result:
 	
@@ -826,13 +831,13 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		if(analyze_TTC):
 			# time to contact estimated with feature sizes:
 			(TTC[sp], NF[sp], TTC_estimates, FTS_USED) = getMatchedFeatures(sample);
-			
 			TTC_ests = TTC_ests + TTC_estimates;
 			n_fts = len(FTS_USED);
 			for ft in range(n_fts):
 				# we add the last descriptor:
-				FTS_descr = FTS_descr + FTS_USED[ft]['descriptors'][-1];
-			
+				FTS_descr = FTS_descr + [FTS_USED[ft]['descriptors'][-1]];
+				# Dists_fts = Dists_fts + (TTC_estimates[ft] * 0.25 * VY[dp-1]);
+				Dists_fts = Dists_fts + [TTC[sp] * VY[dp-1]];
 			# Ground truth TTC:
 			
 			# first rotate the 2D body velocities to obtain world velocities:
@@ -897,6 +902,10 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		# save the matrix of descriptors with corresponding TTC values for further analysis:
 		scipy.io.savemat('FTS_descr.mat', mdict={'FTS_descr': FTS_descr});
 		scipy.io.savemat('TTC_ests.mat', mdict={'TTC_ests': TTC_ests});
+		scipy.io.savemat('Dists_fts.mat', mdict={'Dists_fts': Dists_fts});
+		np.savetxt('FTS_descr.txt', FTS_descr);
+		np.savetxt('TTC_ests.txt', TTC_ests);
+		np.savetxt('Dists_fts.txt', Dists_fts);
 		
 		# plot TTC and GT_TTC in the same figure:
 		pl.figure();
