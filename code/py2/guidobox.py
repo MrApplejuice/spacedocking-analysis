@@ -9,7 +9,7 @@ from calc_tsne import *
 import scipy.io
 
 from readdata import *
-#from clustering import *
+from Kohonen import *
 import os
 import pdb
 import cv2
@@ -263,7 +263,13 @@ def getMatchedFeatures(sample, graphics=False):
 		
 	TimeToContact *= snapshot_time_interval;
 	
-	return (TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED);
+	# also return all features present in the last frame:
+	ALL_FTS = [];
+	for ft2 in range(n_features2):
+		# use the last added descriptor:
+		ALL_FTS = ALL_FTS + [frame2['features']['features'][ft2]['descriptor']];
+	
+	return (TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED, ALL_FTS);
 	
 
 def determineTTCLinearFit(feature):
@@ -743,7 +749,7 @@ def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, 
 	#Plot.scatter(Y[:,0], Y[:,1], 20, orientations);
 	#pl.title('orientations');
 		
-def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True):
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True, storeKohonenHistograms=True, KohonenFile='Kohonen.txt'):
 	""" Plots simple statistics from the database such as where the photos were taken, etc.
 		If analyze_TTC = True, it also tracks features over multiple frames and assigns Time-To-Contacs to them.
 		If selectSubset = True, only 10 samples from the database are processed.
@@ -792,6 +798,11 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		TTC_ests = [];
 		FTS_descr = [];
 		Dists_fts = [];
+		if(storeKohonenHistograms):
+			Dists_hists = [];
+			KohonenHistograms = [];
+			Kohonen = np.loadtxt(KohonenFile);
+			n_clusters = len(Kohonen);
 		
 	for sample in result:
 	
@@ -830,15 +841,30 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		
 		if(analyze_TTC):
 			# time to contact estimated with feature sizes:
-			(TTC[sp], NF[sp], TTC_estimates, FTS_USED) = getMatchedFeatures(sample);
+			(TTC[sp], NF[sp], TTC_estimates, FTS_USED, ALL_FTS) = getMatchedFeatures(sample);
 			TTC_ests = TTC_ests + TTC_estimates;
 			n_fts = len(FTS_USED);
 			for ft in range(n_fts):
 				# we add the last descriptor:
 				FTS_descr = FTS_descr + [FTS_USED[ft]['descriptors'][-1]];
-				# Dists_fts = Dists_fts + (TTC_estimates[ft] * 0.25 * VY[dp-1]);
-				Dists_fts = Dists_fts + [TTC[sp] * VY[dp-1]];
-			# Ground truth TTC:
+				Dists_fts = Dists_fts + [TTC_estimates[ft] * 0.25 * VY[dp-1]];
+				# Dists_fts = Dists_fts + [TTC[sp] * VY[dp-1]];
+			
+			# store a Kohonen histogram (bag of words) for the image:
+			if(storeKohonenHistograms):
+				n_all_fts = len(ALL_FTS);
+				image_histogram = np.array([0.0] * n_clusters);
+				distances = np.array([0.0] * n_clusters);
+				for ft in range(n_all_fts):
+					sample = np.array(ALL_FTS[ft]);
+					# find closest cluster:
+					for i in range(n_clusters):
+						distances[i] = np.linalg.norm(Kohonen[i] - sample);
+					min_ind = np.argmin(distances);
+					image_histogram[min_ind] += 1;
+				Dists_hists = Dists_hists + [TTC[sp] * VY[dp-1]];	
+				KohonenHistograms = KohonenHistograms + [image_histogram];
+			
 			
 			# first rotate the 2D body velocities to obtain world velocities:
 			# heading was not logged well!
@@ -906,6 +932,11 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		np.savetxt('FTS_descr.txt', FTS_descr);
 		np.savetxt('TTC_ests.txt', TTC_ests);
 		np.savetxt('Dists_fts.txt', Dists_fts);
+		if(storeKohonenHistograms):
+			scipy.io.savemat('KohonenHistograms.mat', mdict={'KohonenHistograms': KohonenHistograms});
+			np.savetxt('KohonenHistograms.txt', KohonenHistograms);
+			scipy.io.savemat('Dists_hists.mat', mdict={'Dists_hists': Dists_hists});
+			np.savetxt('Dists_hists.txt', Dists_hists);
 		
 		# plot TTC and GT_TTC in the same figure:
 		pl.figure();
