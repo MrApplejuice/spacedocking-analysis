@@ -709,10 +709,22 @@ def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, 
 	responses = [];
 	sizes = [];
 	orientations = [];
+	ys = [];
+	zs = [];
+	distances = [];
+	n_features = [];
 	for sample in result:
 		for f in range(n_frames):
 			# get frame:
 			frame = sample['frames'][f];
+			
+			# get position information for labelling:
+			position = frame['position'];
+			x = position[x_index];
+			y = position[y_index];
+			z = position[z_index];
+			distance_to_marker = np.linalg.norm(position);
+			nf = len(frame['features']['features']);
 			
 			# process features:
 			for ft in frame['features']['features']:
@@ -720,12 +732,20 @@ def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, 
 				responses.append(ft['response']);
 				sizes.append(ft['size']);
 				orientations.append(ft['angle']);
+				ys.append(y);
+				zs.append(z);
+				distances.append(distance_to_marker);
+				n_features.append(nf);
 	
 	# run t-SNE on the feature database:
 	scipy.io.savemat('X.mat', mdict={'X': X});
 	scipy.io.savemat('responses.mat', mdict={'responses': responses});
 	scipy.io.savemat('orientations.mat', mdict={'orientations': orientations});
 	scipy.io.savemat('sizes.mat', mdict={'sizes': sizes});
+	scipy.io.savemat('distances.mat', mdict={'distances': distances});
+	scipy.io.savemat('ys.mat', mdict={'ys': ys});
+	scipy.io.savemat('zs.mat', mdict={'zs': zs});
+	scipy.io.savemat('n_features.mat', mdict={'n_features': n_features});
 	#np.savetxt('X.txt', X);
 	#np.savetxt('responses.txt', responses);
 	#np.savetxt('sizes.txt', sizes);

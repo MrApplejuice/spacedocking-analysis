@@ -32,9 +32,13 @@ else
     inds = inds(1:n_selected);
     X = X(inds,:);
     save('inds', 'inds');
-    orientations = orientations(inds);
-    responses = responses(inds);
-    sizes = sizes(inds);
+    if(~exist('T', 'var') || isempty(T))
+        orientations = orientations(inds);
+        responses = responses(inds);
+        sizes = sizes(inds);
+    else
+        T = T(inds);
+    end
 end
 
 curr = pwd;
