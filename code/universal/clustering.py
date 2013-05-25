@@ -246,6 +246,7 @@ def pairer(data):
     
     # Calculate with opencl
     distanceMatrix = ndarray((len(binIndexes), len(binIndexes)), dtype=float32)
+    print distanceMatrix.shape, distanceMatrix.nbytes
     distanceMatrixBufferCl = cl.Buffer(clContext, cl.mem_flags.READ_WRITE, size=distanceMatrix.nbytes);
     
     def flt(x):
@@ -409,12 +410,12 @@ def pairer(data):
     
     return [g for i, g in enumerate(group) if not startedDirty[i]]
 
-  def preSplitUnifyGroupByPC(group, target_group_size=1000):
+  def preSplitUnifyGroupByPC(group, target_group_size=1000, pc_offset=0):
     pol_data_covar = cov(data[(tuple(flatten(group)),)], rowvar=0)
     pcs = eig(pol_data_covar)
     
     # Calculate groups and sort data samples into the groups
-    prinComp = pcs[1][0]
+    prinComp = pcs[1][pc_offset]
     project = lambda x: dot(prinComp, x)
 
     # Create a flattened version of group
@@ -531,16 +532,23 @@ def pairer(data):
       sys.stdout.flush()
       
     print map(len, bins)
-    result = []
+    result = macro_bin
     for b in bins:
       result += b
     return result
 
   indexes = list(range(len(data)))
+  #indexes = list(range(5000))
   
   # Start with binned pairing
   if len(data) > 10000:
-    indexes = preSplitUnifyGroupByPC(indexes, target_group_size=400)
+    indexes = preSplitUnifyGroupByPC(indexes, target_group_size=500)
+
+    indexes = preSplitUnifyGroupByPC(indexes, target_group_size=500, pc_offset=1)
+
+    indexes = preSplitUnifyGroupByPC(indexes, target_group_size=500, pc_offset=2)
+
+    indexes = preSplitUnifyGroupByPC(indexes, target_group_size=500, pc_offset=3)
 
   print "Precluster count:", len(indexes)
       
