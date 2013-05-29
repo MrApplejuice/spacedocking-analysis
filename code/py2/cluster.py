@@ -1,4 +1,4 @@
-from clustering import pairer
+from clustering2 import pairer
 from readdata import loadData
 
 def cluster_main(args):
