@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 
+# low-dimensional representation with t-sne:
+import sys
+sys.path.insert(0, './py2/tsne_python/')
+sys.path.insert(0, './py2/calc_tsne/')
+from tsne import *
+from calc_tsne import *
+import scipy.io
+
 from readdata import *
-from clustering import *
+from Kohonen import *
 import os
 import pdb
 import cv2
@@ -9,6 +17,8 @@ import numpy as np;
 from matplotlib import pyplot as pl;
 from matplotlib.transforms import Affine2D
 from mpl_toolkits.axes_grid import AxesGrid
+
+import pylab as Plot
 
 # size(result) -> total number of samples
 # size(result[i]['frames']) == 5
@@ -27,6 +37,7 @@ x_index = 1;
 y_index = 0;
 z_index = 2;
 
+snapshot_time_interval = 0.25;
 
 def initializeFeatures(features, time_step):
 	n_features = len(features);
@@ -67,6 +78,9 @@ def getMatchedFeatures(sample, graphics=False):
 	
 	# maximum number of time steps a feature can go unobserved:
 	max_n_not_observed = 1;
+	
+	# minimum number of observations of a feature to be considered for the estimate:
+	min_memory = 4;
 	
 	# number of frames in a stored sequence:
 	n_frames = len(sample['frames']);
@@ -220,14 +234,15 @@ def getMatchedFeatures(sample, graphics=False):
 	n_features = len(FTS);
 	# only determine time-to-contact at the end:
 	memory_distribution = np.array([0] * n_features);
-	min_memory = 3;
 	TTC_estimates = [];
+	FTS_USED = [];
 	n_features_used_for_estimate = 0;
 	for ft in range(n_features):
 		memory_size = len(FTS[ft]['sizes'])
 		memory_distribution[ft] = memory_size;
 		if(memory_size >= min_memory):
 			TTC_estimates.append(determineTTCLinearFit(FTS[ft]));
+			FTS_USED = FTS_USED + [FTS[ft]];
 			n_features_used_for_estimate += 1;
 			
 	if(ttc_graphics):
@@ -245,8 +260,16 @@ def getMatchedFeatures(sample, graphics=False):
 		TimeToContact = np.median(TTC_estimates);
 	else:
 		TimeToContact = 1E3;
+		
+	TimeToContact *= snapshot_time_interval;
 	
-	return (TimeToContact, n_features_used_for_estimate);
+	# also return all features present in the last frame:
+	ALL_FTS = [];
+	for ft2 in range(n_features2):
+		# use the last added descriptor:
+		ALL_FTS = ALL_FTS + [frame2['features']['features'][ft2]['descriptor']];
+	
+	return (TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED, ALL_FTS);
 	
 
 def determineTTCLinearFit(feature):
@@ -255,6 +278,7 @@ def determineTTCLinearFit(feature):
 	n_ts = len(feature['time_steps']);
 	A = np.ones([n_ts, 2]);
 	A[:,1] = feature['time_steps'];
+	# to sqrt or not to sqrt?
 	b = np.array(feature['sizes']);
 	(x, residuals, rnk, s) = np.linalg.lstsq(A,b);
 	
@@ -664,7 +688,93 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
 		
 		
-def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True):
+def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
+	"""Runs t-SNE low dimension embedding on the AstroDrone database """
+	
+	# load the database, and put the features in the right format:
+	result = loadData(test_dir + "/" + data_name);
+	
+	if(selectSubset):
+		# select a number of random samples:
+		n_samples = len(result);
+		rand_inds = np.random.permutation(range(n_samples));
+		result = [result[i] for i in rand_inds[0:n_selected_samples].tolist()];
+		
+	# iterate over the data:
+	n_samples = len(result);
+	n_frames = len(result[0]['frames']);
+	# X will contain the feature descriptor data:
+	X = [];
+	# the following arrays will contain feature properties that can be seen as labels.
+	responses = [];
+	sizes = [];
+	orientations = [];
+	ys = [];
+	zs = [];
+	distances = [];
+	n_features = [];
+	for sample in result:
+		for f in range(n_frames):
+			# get frame:
+			frame = sample['frames'][f];
+			
+			# get position information for labelling:
+			position = frame['position'];
+			x = position[x_index];
+			y = position[y_index];
+			z = position[z_index];
+			distance_to_marker = np.linalg.norm(position);
+			nf = len(frame['features']['features']);
+			
+			# process features:
+			for ft in frame['features']['features']:
+				X.append(ft['descriptor']);
+				responses.append(ft['response']);
+				sizes.append(ft['size']);
+				orientations.append(ft['angle']);
+				ys.append(y);
+				zs.append(z);
+				distances.append(distance_to_marker);
+				n_features.append(nf);
+	
+	# run t-SNE on the feature database:
+	scipy.io.savemat('X.mat', mdict={'X': X});
+	scipy.io.savemat('responses.mat', mdict={'responses': responses});
+	scipy.io.savemat('orientations.mat', mdict={'orientations': orientations});
+	scipy.io.savemat('sizes.mat', mdict={'sizes': sizes});
+	scipy.io.savemat('distances.mat', mdict={'distances': distances});
+	scipy.io.savemat('ys.mat', mdict={'ys': ys});
+	scipy.io.savemat('zs.mat', mdict={'zs': zs});
+	scipy.io.savemat('n_features.mat', mdict={'n_features': n_features});
+	#np.savetxt('X.txt', X);
+	#np.savetxt('responses.txt', responses);
+	#np.savetxt('sizes.txt', sizes);
+	#np.savetxt('orientations.txt', orientations);
+	
+	## transform X to a Math array:
+	#XM = Math.array(X);
+	#
+	## perform t-SNE:
+	## Y = calc_tsne(XM);
+	#Y = tsne(XM, 2, 50, 5.0);
+	#
+	## plot the results:
+	#pl.figure();
+	#Plot.scatter(Y[:,0], Y[:,1], 20, responses);
+	#pl.title('responses');
+	#pl.figure();
+	#Plot.scatter(Y[:,0], Y[:,1], 20, sizes);
+	#pl.title('sizes');
+	#pl.figure();
+	#Plot.scatter(Y[:,0], Y[:,1], 20, orientations);
+	#pl.title('orientations');
+		
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True, storeKohonenHistograms=True, KohonenFile='Kohonen.txt'):
+	""" Plots simple statistics from the database such as where the photos were taken, etc.
+		If analyze_TTC = True, it also tracks features over multiple frames and assigns Time-To-Contacs to them.
+		If selectSubset = True, only 10 samples from the database are processed.
+	"""
+
 	# read the data from the database:
 	result = loadData(test_dir + "/" + data_name);
 	
@@ -704,6 +814,15 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		GT_TTC = np.array([0.0] * n_samples); #np.zeros([n_samples, n_frames-1]);
 		epsi = 1E-3;#1E-4 * np.ones([1, n_frames-1]);
 		R = np.zeros([2,2]);
+		# the following lists contain the information per individual feature:
+		TTC_ests = [];
+		FTS_descr = [];
+		Dists_fts = [];
+		if(storeKohonenHistograms):
+			Dists_hists = [];
+			KohonenHistograms = [];
+			Kohonen = np.loadtxt(KohonenFile);
+			n_clusters = len(Kohonen);
 		
 	for sample in result:
 	
@@ -742,9 +861,30 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		
 		if(analyze_TTC):
 			# time to contact estimated with feature sizes:
-			(TTC[sp], NF[sp]) = getMatchedFeatures(sample);
+			(TTC[sp], NF[sp], TTC_estimates, FTS_USED, ALL_FTS) = getMatchedFeatures(sample);
+			TTC_ests = TTC_ests + TTC_estimates;
+			n_fts = len(FTS_USED);
+			for ft in range(n_fts):
+				# we add the last descriptor:
+				FTS_descr = FTS_descr + [FTS_USED[ft]['descriptors'][-1]];
+				Dists_fts = Dists_fts + [TTC_estimates[ft] * 0.25 * VY[dp-1]];
+				# Dists_fts = Dists_fts + [TTC[sp] * VY[dp-1]];
 			
-			# Ground truth TTC:
+			# store a Kohonen histogram (bag of words) for the image:
+			if(storeKohonenHistograms):
+				n_all_fts = len(ALL_FTS);
+				image_histogram = np.array([0.0] * n_clusters);
+				distances = np.array([0.0] * n_clusters);
+				for ft in range(n_all_fts):
+					sample = np.array(ALL_FTS[ft]);
+					# find closest cluster:
+					for i in range(n_clusters):
+						distances[i] = np.linalg.norm(Kohonen[i] - sample);
+					min_ind = np.argmin(distances);
+					image_histogram[min_ind] += 1;
+				Dists_hists = Dists_hists + [TTC[sp] * VY[dp-1]];	
+				KohonenHistograms = KohonenHistograms + [image_histogram];
+			
 			
 			# first rotate the 2D body velocities to obtain world velocities:
 			# heading was not logged well!
@@ -798,11 +938,33 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	pl.hist(np.array(sizes), 60);
 	pl.title('Feature size distribution in database');
 	
+	# show a histogram of yaw angles:
+	pl.figure();
+	pl.hist(yaw, 60);
+	pl.title('Histogram of yaw angles');
+	
 	if(analyze_TTC):
 	
+		# save the matrix of descriptors with corresponding TTC values for further analysis:
+		scipy.io.savemat('FTS_descr.mat', mdict={'FTS_descr': FTS_descr});
+		scipy.io.savemat('TTC_ests.mat', mdict={'TTC_ests': TTC_ests});
+		scipy.io.savemat('Dists_fts.mat', mdict={'Dists_fts': Dists_fts});
+		np.savetxt('FTS_descr.txt', FTS_descr);
+		np.savetxt('TTC_ests.txt', TTC_ests);
+		np.savetxt('Dists_fts.txt', Dists_fts);
+		if(storeKohonenHistograms):
+			scipy.io.savemat('KohonenHistograms.mat', mdict={'KohonenHistograms': KohonenHistograms});
+			np.savetxt('KohonenHistograms.txt', KohonenHistograms);
+			scipy.io.savemat('Dists_hists.mat', mdict={'Dists_hists': Dists_hists});
+			np.savetxt('Dists_hists.txt', Dists_hists);
+		
 		# plot TTC and GT_TTC in the same figure:
 		pl.figure();
 		pl.plot(TTC, GT_TTC, 'x');
+		pl.hold=True;
+		min_TTC = np.min(TTC);
+		max_TTC = np.max(TTC);
+		pl.plot([min_TTC, max_TTC], [min_TTC, max_TTC], color=(0.0,1.0,0.0));
 		pl.title('TTC vs ground truth TTC')
 	
 		pl.figure();
