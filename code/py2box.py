@@ -7,7 +7,6 @@ import os
 sys.path += [os.path.join(os.path.realpath("."), os.path.dirname(sys.argv[0]), p) for p in ["py2", "universal"]]
 
 from readdata import *
-#from clustering import *
 
 importedBox = True
 if len(sys.argv) > 1:
