@@ -49,57 +49,70 @@ class VertexBufferAccess {
     }
 };
 
+static void writeBracket(VertexBufferAccess& vba, const glm::vec3& startPosition, float width, bool extraLine, glm::vec3* labelPosition = NULL, glm::vec3* endPoints = NULL) {
+  const unsigned int lineStartIndex = vba.currentDataIndex;
+  vba.writeIndex(lineStartIndex + 0);
+  vba.writeIndex(lineStartIndex + 2);
+  vba.writeIndex(lineStartIndex + 1);
+  vba.writeIndex(lineStartIndex + 3);
+  vba.writeIndex(lineStartIndex + 2);
+  vba.writeIndex(lineStartIndex + 3);
+  if (extraLine) {
+    vba.writeIndex(lineStartIndex + 4);
+    vba.writeIndex(lineStartIndex + 5);
+  }
+
+  glm::vec3 vertXtraOffset(0, 0, 0);
+  const glm::vec3 vertOffset(0, -width * 0.25, 0);
+  const glm::vec3 lineDelta(width / 2.0, 0, 0);
+  if (extraLine) {
+    vertXtraOffset += vertOffset;
+  }
+  
+  const glm::vec3 endpoint1 = startPosition - lineDelta + vertOffset + vertXtraOffset;
+  const glm::vec3 endpoint2 = startPosition + lineDelta + vertOffset + vertXtraOffset;
+  
+  memcpy(vba.getDataPtr(), glm::value_ptr(endpoint1), sizeof(float) * 3);
+  vba.advance();
+  memcpy(vba.getDataPtr(), glm::value_ptr(endpoint2), sizeof(float) * 3);
+  vba.advance();
+  memcpy(vba.getDataPtr(), glm::value_ptr(startPosition - lineDelta + vertXtraOffset), sizeof(float) * 3);
+  vba.advance();
+  memcpy(vba.getDataPtr(), glm::value_ptr(startPosition + lineDelta + vertXtraOffset), sizeof(float) * 3);
+  vba.advance();
+  if (extraLine) {
+    memcpy(vba.getDataPtr(), glm::value_ptr(startPosition + vertXtraOffset), sizeof(float) * 3);
+    vba.advance();
+    memcpy(vba.getDataPtr(), glm::value_ptr(startPosition), sizeof(float) * 3);
+    vba.advance();
+  }
+
+  if (labelPosition != NULL) {
+    *labelPosition = glm::vec3(startPosition.x + vertXtraOffset.x, startPosition.y + vertXtraOffset.y, 0);
+  }
+  
+  if (endPoints != NULL) {
+    endPoints[0] = endpoint1;
+    endPoints[1] = endpoint2;
+  }
+}
+
 static void recursiveFillBuffer(VertexBufferAccess& vba, const glm::vec3& startPosition, float width, ClusterVisualizer::DistanceLabelStack& distanceLabels, Cluster::NodeRef node, int depth=0) {
   if (node) {
     const Cluster::NodeRef* children = node->getChildren();
 
-    const unsigned int lineStartIndex = vba.currentDataIndex;
-    vba.writeIndex(lineStartIndex + 0);
-    vba.writeIndex(lineStartIndex + 2);
-    vba.writeIndex(lineStartIndex + 1);
-    vba.writeIndex(lineStartIndex + 3);
-    vba.writeIndex(lineStartIndex + 2);
-    vba.writeIndex(lineStartIndex + 3);
-    if (!node->getParent()) {
-      vba.writeIndex(lineStartIndex + 4);
-      vba.writeIndex(lineStartIndex + 5);
-    }
+    glm::vec3 childStartPositions[2];
+    glm::vec3 labelPos;
+    writeBracket(vba, startPosition, width, !node->getParent(), &labelPos, childStartPositions);
     
-    glm::vec3 vertXtraOffset(0, 0, 0);
-    const glm::vec3 vertOffset(0, -width * 0.25, 0);
-    const glm::vec3 lineDelta(width / 2.0, 0, 0);
-    if (!node->getParent()) {
-      vertXtraOffset += vertOffset;
-    }
-
     {
-      ClusterVisualizer::DistanceLabel distanceLabel(lexical_cast<string>(node->getDistance()), startPosition.x + vertXtraOffset.x, startPosition.y + vertXtraOffset.y, 0.075 * pow(0.5, depth));
+      ClusterVisualizer::DistanceLabel distanceLabel(lexical_cast<string>(node->getDistance()), labelPos.x, labelPos.y, 0.075 * pow(0.5, depth));
       while (depth >= distanceLabels.size()) {
         distanceLabels.push_back(ClusterVisualizer::DistanceLabelVector());
       }
       distanceLabels[depth].push_back(distanceLabel);
     }
 
-    
-    const glm::vec3 endpoint1 = startPosition - lineDelta + vertOffset + vertXtraOffset;
-    const glm::vec3 endpoint2 = startPosition + lineDelta + vertOffset + vertXtraOffset;
-    
-    memcpy(vba.getDataPtr(), glm::value_ptr(endpoint1), sizeof(float) * 3);
-    vba.advance();
-    memcpy(vba.getDataPtr(), glm::value_ptr(endpoint2), sizeof(float) * 3);
-    vba.advance();
-    memcpy(vba.getDataPtr(), glm::value_ptr(startPosition - lineDelta + vertXtraOffset), sizeof(float) * 3);
-    vba.advance();
-    memcpy(vba.getDataPtr(), glm::value_ptr(startPosition + lineDelta + vertXtraOffset), sizeof(float) * 3);
-    vba.advance();
-    if (!node->getParent()) {
-      memcpy(vba.getDataPtr(), glm::value_ptr(startPosition + vertXtraOffset), sizeof(float) * 3);
-      vba.advance();
-      memcpy(vba.getDataPtr(), glm::value_ptr(startPosition), sizeof(float) * 3);
-      vba.advance();
-    }
-
-    glm::vec3 childStartPositions[2] = {endpoint1, endpoint2};
     for (int i = 0; i < 2; i++) {
       if (children[i]) {
         recursiveFillBuffer(vba, childStartPositions[i], width / 2.0, distanceLabels, children[i], depth + 1);
