@@ -29,6 +29,8 @@ class ClusterVisualizer {
   private:
     engine::GameEngine& engine;
     
+    Cluster::NodeRef rootNode, topNode;
+    
     size_t lineCount;
     
     GLuint lineSettingsVertexArray;
@@ -37,10 +39,13 @@ class ClusterVisualizer {
     
     engine::ShaderProgram lineShader;
     
+    glm::vec3 lineLabelPosition;
+    glm::vec3 lineEndpoints[2];
+    
     engine::GLFontRef font;
     engine::ShaderProgram fontShader;
     
-    DistanceLabelStack distanceLabels;
+    virtual void recursiveDraw(const glm::mat4& projMat, const glm::mat4& viewMat, Cluster::NodeRef node, int depth, DistanceLabelStack& distanceLabels) const;
   public:
     class Camera {
       private:
@@ -67,6 +72,7 @@ class ClusterVisualizer {
     
     Camera camera;
   
+    virtual void updateZoom();
     virtual void draw() const;
   
     ClusterVisualizer(engine::GameEngine& engine, const Cluster& cluster);

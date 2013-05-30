@@ -196,7 +196,7 @@ def pairer(data):
         raise Exception(str(o) + " is not managed")
     
   class SerializedColumn:
-    CACHE = SerializeCache(500)
+    CACHE = SerializeCache(200)
     
     def _getFilename(self):
       return self.__filename;
@@ -417,6 +417,7 @@ def pairer(data):
     
     # Find shortest distance
     col = distanceSortedColumns.pop(0)
+    distance = col.getMinValue()
     thisColIndex = sdmat.index(col) # Obtain "this col index"
     otherColIndex = col.getMinIndex()
     otherCol = sdmat[otherColIndex]
@@ -424,13 +425,8 @@ def pairer(data):
     thisDistance = (otherColIndex, col[otherColIndex], col.getMinValue(), thisColIndex, otherCol[thisColIndex], otherCol.getMinIndex(), otherCol.getMinValue(), argmin(col.getVector()), min(col.getVector()))
     
     # Delete all otherColIndex distance values
-    print "before col[otherColIndex]",col[otherColIndex]
-    if otherColIndex + 1 < len(col):
-      print "before col[otherColIndex+1]",col[otherColIndex+1]
     for o in sdmat:
       o.deleteItem(otherColIndex)
-    if otherColIndex < len(col):
-      print "after col[otherColIndex]",col[otherColIndex]
     
     # Remove otherCol
     sdmat.pop(otherColIndex)
@@ -438,7 +434,7 @@ def pairer(data):
     # Unify columns - we know the col index of "otherCol" so "otherCol" is removed
     distanceSortedColumns.remove(otherCol)
 
-    col.index = [col.index, otherCol.index]
+    col.index = [col.index, otherCol.index, distance]
     print "Pairing", col.index, " ", len(sdmat), "left", " ", "distance", thisDistance
     
     thisColIndex = sdmat.index(col) # Update "this col index" after sdmat.pop(otherColIndex) has been executed
@@ -463,6 +459,8 @@ def pairer(data):
     
     # Slow fix: Force sorting
     #distanceSortedColumns.sort(key=lambda x: x.getMinValue())
+    
+  return sdmat[0].index
 
 if __name__ == '__main__':
   targetFigure = figure()

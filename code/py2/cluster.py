@@ -17,11 +17,20 @@ def cluster_main(args):
         
     print "pairing", len(features)
     pairs = pairer(features)
-        
+
+    # Assemble file lines
+    lines = []
+    def assembleFileLine(pair):
+      if type(pair) is int:
+        return '[' + str(pair) + ']'
+      else:
+        lines.append(str(pair[2]) + ' ' + str(assembleFileLine(pair[0])) + ' ' + str(assembleFileLine(pair[1])))
+        return len(lines) - 1
+    assembleFileLine(pairs)
+    
     f = file(args[2], 'w')
-    f.write("Works!\n")
-    f.write(str(pairs))
-    f.write("\n")
+    for l in lines:
+      f.write(l + '\n')
     f.close()
 
 if __name__ == "__main__":
