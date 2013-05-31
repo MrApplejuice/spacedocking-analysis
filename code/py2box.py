@@ -9,7 +9,6 @@ sys.path.insert(0, './universal/')
 sys.path.insert(0, './py2/')
 
 from readdata import *
-#from clustering import *
 
 importedBox = True
 if len(sys.argv) > 1:

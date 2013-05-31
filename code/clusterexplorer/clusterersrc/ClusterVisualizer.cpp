@@ -12,6 +12,8 @@ using namespace std;
 using namespace boost;
 using namespace engine;
 
+#define SCALE_FACTOR 0.5
+
 class VertexBufferAccess {
   private:
     size_t itemSize;
@@ -49,57 +51,70 @@ class VertexBufferAccess {
     }
 };
 
+static void writeBracket(VertexBufferAccess& vba, const glm::vec3& startPosition, float width, bool extraLine, glm::vec3* labelPosition = NULL, glm::vec3* endPoints = NULL) {
+  const unsigned int lineStartIndex = vba.currentDataIndex;
+  vba.writeIndex(lineStartIndex + 0);
+  vba.writeIndex(lineStartIndex + 2);
+  vba.writeIndex(lineStartIndex + 1);
+  vba.writeIndex(lineStartIndex + 3);
+  vba.writeIndex(lineStartIndex + 2);
+  vba.writeIndex(lineStartIndex + 3);
+  if (extraLine) {
+    vba.writeIndex(lineStartIndex + 4);
+    vba.writeIndex(lineStartIndex + 5);
+  }
+
+  glm::vec3 vertXtraOffset(0, 0, 0);
+  const glm::vec3 vertOffset(0, -width * 0.25, 0);
+  const glm::vec3 lineDelta(width / 2.0, 0, 0);
+  if (extraLine) {
+    vertXtraOffset += vertOffset;
+  }
+  
+  const glm::vec3 endpoint1 = startPosition - lineDelta + vertOffset + vertXtraOffset;
+  const glm::vec3 endpoint2 = startPosition + lineDelta + vertOffset + vertXtraOffset;
+  
+  memcpy(vba.getDataPtr(), glm::value_ptr(endpoint1), sizeof(float) * 3);
+  vba.advance();
+  memcpy(vba.getDataPtr(), glm::value_ptr(endpoint2), sizeof(float) * 3);
+  vba.advance();
+  memcpy(vba.getDataPtr(), glm::value_ptr(startPosition - lineDelta + vertXtraOffset), sizeof(float) * 3);
+  vba.advance();
+  memcpy(vba.getDataPtr(), glm::value_ptr(startPosition + lineDelta + vertXtraOffset), sizeof(float) * 3);
+  vba.advance();
+  if (extraLine) {
+    memcpy(vba.getDataPtr(), glm::value_ptr(startPosition + vertXtraOffset), sizeof(float) * 3);
+    vba.advance();
+    memcpy(vba.getDataPtr(), glm::value_ptr(startPosition), sizeof(float) * 3);
+    vba.advance();
+  }
+
+  if (labelPosition != NULL) {
+    *labelPosition = glm::vec3(startPosition.x + vertXtraOffset.x, startPosition.y + vertXtraOffset.y, 0);
+  }
+  
+  if (endPoints != NULL) {
+    endPoints[0] = endpoint1;
+    endPoints[1] = endpoint2;
+  }
+}
+
 static void recursiveFillBuffer(VertexBufferAccess& vba, const glm::vec3& startPosition, float width, ClusterVisualizer::DistanceLabelStack& distanceLabels, Cluster::NodeRef node, int depth=0) {
   if (node) {
     const Cluster::NodeRef* children = node->getChildren();
 
-    const unsigned int lineStartIndex = vba.currentDataIndex;
-    vba.writeIndex(lineStartIndex + 0);
-    vba.writeIndex(lineStartIndex + 2);
-    vba.writeIndex(lineStartIndex + 1);
-    vba.writeIndex(lineStartIndex + 3);
-    vba.writeIndex(lineStartIndex + 2);
-    vba.writeIndex(lineStartIndex + 3);
-    if (!node->getParent()) {
-      vba.writeIndex(lineStartIndex + 4);
-      vba.writeIndex(lineStartIndex + 5);
-    }
+    glm::vec3 childStartPositions[2];
+    glm::vec3 labelPos;
+    writeBracket(vba, startPosition, width, !node->getParent(), &labelPos, childStartPositions);
     
-    glm::vec3 vertXtraOffset(0, 0, 0);
-    const glm::vec3 vertOffset(0, -width * 0.25, 0);
-    const glm::vec3 lineDelta(width / 2.0, 0, 0);
-    if (!node->getParent()) {
-      vertXtraOffset += vertOffset;
-    }
-
     {
-      ClusterVisualizer::DistanceLabel distanceLabel(lexical_cast<string>(node->getDistance()), startPosition.x + vertXtraOffset.x, startPosition.y + vertXtraOffset.y, 0.075 * pow(0.5, depth));
+      ClusterVisualizer::DistanceLabel distanceLabel(lexical_cast<string>(node->getDistance()), labelPos.x, labelPos.y, 0.075 * pow(SCALE_FACTOR, depth));
       while (depth >= distanceLabels.size()) {
         distanceLabels.push_back(ClusterVisualizer::DistanceLabelVector());
       }
       distanceLabels[depth].push_back(distanceLabel);
     }
 
-    
-    const glm::vec3 endpoint1 = startPosition - lineDelta + vertOffset + vertXtraOffset;
-    const glm::vec3 endpoint2 = startPosition + lineDelta + vertOffset + vertXtraOffset;
-    
-    memcpy(vba.getDataPtr(), glm::value_ptr(endpoint1), sizeof(float) * 3);
-    vba.advance();
-    memcpy(vba.getDataPtr(), glm::value_ptr(endpoint2), sizeof(float) * 3);
-    vba.advance();
-    memcpy(vba.getDataPtr(), glm::value_ptr(startPosition - lineDelta + vertXtraOffset), sizeof(float) * 3);
-    vba.advance();
-    memcpy(vba.getDataPtr(), glm::value_ptr(startPosition + lineDelta + vertXtraOffset), sizeof(float) * 3);
-    vba.advance();
-    if (!node->getParent()) {
-      memcpy(vba.getDataPtr(), glm::value_ptr(startPosition + vertXtraOffset), sizeof(float) * 3);
-      vba.advance();
-      memcpy(vba.getDataPtr(), glm::value_ptr(startPosition), sizeof(float) * 3);
-      vba.advance();
-    }
-
-    glm::vec3 childStartPositions[2] = {endpoint1, endpoint2};
     for (int i = 0; i < 2; i++) {
       if (children[i]) {
         recursiveFillBuffer(vba, childStartPositions[i], width / 2.0, distanceLabels, children[i], depth + 1);
@@ -165,13 +180,13 @@ void ClusterVisualizer :: Camera :: move(float dx, float dy) {
 }
       
 float ClusterVisualizer :: Camera :: calcVerticalSizeFactor() const {
-  return pow(0.5, calcDepth());
+  return pow(SCALE_FACTOR, calcDepth());
 }
 
 float ClusterVisualizer :: Camera :: calcDepth() const {
   float ypower = 0.0;
   if (_pos.y < 0.0) {
-    ypower = log(1 - -_pos.y / 0.25 * (1 - 0.5)) / log(0.5);
+    ypower = log(1 - -_pos.y / (SCALE_FACTOR * SCALE_FACTOR) * (1 - SCALE_FACTOR)) / log(SCALE_FACTOR);
   }
   return ypower;
 }
@@ -191,17 +206,71 @@ ClusterVisualizer :: Camera :: Camera() {
 
 const static size_t VERTEX_SIZE = sizeof(float) * 6;
 
+void ClusterVisualizer :: recursiveDraw(const glm::mat4& projMat, const glm::mat4& viewMat, Cluster::NodeRef node, int depth, DistanceLabelStack& distanceLabels) const {
+  if (depth <= 10) {
+    // Add distance label
+    if (depth <= 5) {
+      while (distanceLabels.size() <= depth) {
+        distanceLabels.push_back(DistanceLabelVector());
+      }
+      {
+        glm::vec4 distanceLabelPosition = viewMat * glm::vec4(0, 0, 0, 1);
+        distanceLabels[depth].push_back(DistanceLabel(lexical_cast<string>(node->getDistance()), distanceLabelPosition.x, distanceLabelPosition.y, 0.05 * pow(SCALE_FACTOR, depth)));
+      }
+    }
+    
+    // Draw bracket
+    lineShader.uniforms["transformation"] = projMat * viewMat;
+    
+    GL_SIMPLE_ERROR(glDrawElements(GL_LINES, lineCount * 2, GL_UNSIGNED_INT, NULL));
+    GL_SIMPLE_ERROR(glDrawElements(GL_POINTS, lineCount * 2, GL_UNSIGNED_INT, NULL));
+    
+    glm::mat4 precalMat = viewMat * glm::scale<float>(SCALE_FACTOR, SCALE_FACTOR, SCALE_FACTOR);
+    if ((bool) node->getChildren()[0]) {
+      glm::mat4 mat = precalMat * glm::translate<float>(2.0f * lineEndpoints[0]);
+      recursiveDraw(projMat, mat, node->getChildren()[0], depth + 1, distanceLabels);
+    }
+    if ((bool) node->getChildren()[1]) {
+      glm::mat4 mat = precalMat * glm::translate<float>(2.0f * lineEndpoints[1]);
+      recursiveDraw(projMat, mat, node->getChildren()[1], depth + 1, distanceLabels);
+    }
+    
+  }
+}
+
+void ClusterVisualizer :: updateZoom() {
+  const static float UP_SWITCH_OFFSET = SCALE_FACTOR * SCALE_FACTOR;
+  const static float DOWN_SWITCH_OFFSET = SCALE_FACTOR * SCALE_FACTOR * (1 + SCALE_FACTOR);
+  
+  if (camera.position().y < -DOWN_SWITCH_OFFSET) {
+    Cluster::NodeRef newTopNode = camera.position().x < 0 ? topNode->getChildren()[0] : topNode->getChildren()[1];
+    if (newTopNode) {
+      topNode = newTopNode;
+      camera.position() += glm::vec3((camera.position().x > 0 ? lineEndpoints[0].x : lineEndpoints[1].x), -SCALE_FACTOR * lineEndpoints[0].y, 0);
+      camera.position().x /= SCALE_FACTOR;
+    }
+  }
+  if (camera.position().y > -UP_SWITCH_OFFSET) {
+    Cluster::NodeRef newTopNode = topNode->getParent();
+    if (newTopNode) {
+      camera.position().x *= SCALE_FACTOR;
+      camera.position() -= glm::vec3((topNode == newTopNode->getChildren()[1] ? lineEndpoints[0].x : lineEndpoints[1].x), -SCALE_FACTOR * lineEndpoints[0].y, 0);
+      topNode = newTopNode;
+    }
+  }
+
+}
+
 void ClusterVisualizer :: draw() const {
   lineShader.install();
-  lineShader.uniforms["transformation"] = glm::scale<float>(1.0 / engine.getScreenAspectRatio(), 1.0, 1.0) * camera.getViewMatrix();
   lineShader.uniforms["color"] = glm::vec4(1, 1, 1, 1);
 
   GL_SIMPLE_ERROR(glBindVertexArray(lineSettingsVertexArray));
   GL_SIMPLE_ERROR(glBindBuffer(GL_ARRAY_BUFFER, lineDataBuffer));
   GL_SIMPLE_ERROR(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lineDataIndexBuffer));
 
-  GL_SIMPLE_ERROR(glDrawElements(GL_LINES, lineCount * 2, GL_UNSIGNED_INT, NULL));
-  GL_SIMPLE_ERROR(glDrawElements(GL_POINTS, lineCount * 2, GL_UNSIGNED_INT, NULL));
+  DistanceLabelStack distanceLabels;
+  recursiveDraw(glm::scale<float>(1.0 / engine.getScreenAspectRatio(), 1.0, 1.0) * camera.getViewMatrix(), glm::mat4(1.0), topNode, 0, distanceLabels);
 
   GL_SIMPLE_ERROR(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0));
   GL_SIMPLE_ERROR(glBindVertexArray(0));
@@ -222,7 +291,7 @@ void ClusterVisualizer :: draw() const {
     }
 
     for (int d = depthStart; (d <= depthStart + DEPTH_DISPLAY_MARGIN * 2) && (d < distanceLabels.size()); d++) {
-      const float graceSize = 0.25 * pow(0.5, d);
+      const float graceSize = 0.25 * pow(SCALE_FACTOR, d);
       BOOST_FOREACH(const DistanceLabel& label, distanceLabels[d]) {
         if (camera.checkVisible(aspectRatio, label.getX(), label.getY(), graceSize)) {
           label.draw(font);
@@ -233,6 +302,9 @@ void ClusterVisualizer :: draw() const {
 }
 
 ClusterVisualizer :: ClusterVisualizer(GameEngine& engine, const Cluster& cluster) : engine(engine), lineSettingsVertexArray(0), lineDataBuffer(0), lineDataIndexBuffer(0) {
+  rootNode = cluster.getRoot();
+  topNode = cluster.getRoot();
+  
   GL_SIMPLE_ERROR(glGenBuffers(1, &lineDataBuffer));
   GL_SIMPLE_ERROR(glGenBuffers(1, &lineDataIndexBuffer));
   GL_SIMPLE_ERROR(glGenVertexArrays(1, &lineSettingsVertexArray));
@@ -241,7 +313,8 @@ ClusterVisualizer :: ClusterVisualizer(GameEngine& engine, const Cluster& cluste
     shared_array<char> dataBuffer(new char[6 * VERTEX_SIZE * cluster.getNodeCount()]);
     shared_array<int> indexBuffer(new int[6 * 2 * cluster.getNodeCount()]);
     VertexBufferAccess vba(dataBuffer.get(), indexBuffer.get(), VERTEX_SIZE);
-    recursiveFillBuffer(vba, glm::vec3(0, 0.25, 0), 1.0, distanceLabels, cluster.getRoot());
+    //recursiveFillBuffer(vba, glm::vec3(0, 0.25, 0), 1.0, distanceLabels, cluster.getRoot());
+    writeBracket(vba, glm::vec3(0, 0, 0), 1.0, false, &lineLabelPosition, lineEndpoints);
 
     lineCount = vba.getIndexCount() / 2;
     

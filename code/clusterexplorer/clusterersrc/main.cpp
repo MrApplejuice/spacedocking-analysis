@@ -117,6 +117,7 @@ class ClusterEngine : public virtual GameEngine {
       GL_SIMPLE_ERROR(glDisable(GL_DEPTH_TEST));
       
       if (clusterVisualizer) {
+        clusterVisualizer->updateZoom();
         clusterVisualizer->draw();
       }
     }

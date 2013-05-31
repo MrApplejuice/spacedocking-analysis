@@ -1,5 +1,5 @@
-function apply_BH_tSNE(n_selected, perplexity, theta, dims)
-% function apply_BH_tSNE(n_selected, perplexity, theta, dims)
+function apply_BH_tSNE(X, T, n_selected, perplexity, theta, dims)
+% function apply_BH_tSNE(X, T, n_selected, perplexity, theta, dims)
 
 addpath('../py2/bh_tsne');
 
@@ -13,11 +13,14 @@ if(~exist('dims', 'var') || isempty(dims))
     dims = 30;
 end
 
-
-load('orientations.txt')
-load('responses.txt')
-load('sizes.txt')
-load('X.mat')
+if(~exist('T', 'var') || isempty(T))
+    load('orientations.txt')
+    load('responses.txt')
+    load('sizes.txt')
+end
+if(~exist('X', 'var') || isempty(X))
+    load('X.mat')
+end
 
 n_samples = size(X,1);
 
@@ -29,9 +32,13 @@ else
     inds = inds(1:n_selected);
     X = X(inds,:);
     save('inds', 'inds');
-    orientations = orientations(inds);
-    responses = responses(inds);
-    sizes = sizes(inds);
+    if(~exist('T', 'var') || isempty(T))
+        orientations = orientations(inds);
+        responses = responses(inds);
+        sizes = sizes(inds);
+    else
+        T = T(inds);
+    end
 end
 
 curr = pwd;
@@ -44,18 +51,24 @@ cd(curr); pause(1);
 % save the results:
 save('Y', 'Y');
 
-% plot the related feature properties:
-figure();
-scatter(Y(:,1),Y(:,2),5,responses);
-title('Responses');
+if(~exist('T', 'var') || isempty(T))
+    % plot the related feature properties:
+    figure();
+    scatter(Y(:,1),Y(:,2),5,responses);
+    title('Responses');
 
-figure();
-scatter(Y(:,1),Y(:,2),5,sizes);
-title('Sizes');
+    figure();
+    scatter(Y(:,1),Y(:,2),5,sizes);
+    title('Sizes');
 
-figure();
-scatter(Y(:,1),Y(:,2),5,orientations);
-title('Orientations');
+    figure();
+    scatter(Y(:,1),Y(:,2),5,orientations);
+    title('Orientations');
+else
+    figure();
+    scatter(Y(:,1),Y(:,2),5,T);
+    title(['Perpl ' num2str(perplexity) ' theta ' num2str(theta) ' dims ' num2str(dims)]);
+end
 
 
 
