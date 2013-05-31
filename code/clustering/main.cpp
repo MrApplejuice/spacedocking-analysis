@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <boost/utility.hpp>
+#include <boost/foreach.hpp>
 #include <boost/thread.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/program_options.hpp>
@@ -238,6 +239,44 @@ DescriptorMatrixRef loadDescriptors(std::fstream& file, unsigned int parallelCou
   return result;
 }
 
+class DistanceComputer {
+  public:
+    unsigned int no;
+    DescriptorMatrixRef descriptors;
+
+    std::vector<float> values;
+  
+    template <typename F1, typename F2>
+    static float euclidean(size_t count, F1 v1, F2 v2) {
+      float result = 0.0f;
+      for (unsigned int i = 0; i < count; i++) {
+        result += v1[i] + v2[i];
+      }
+      return result;
+    }
+  
+    void operator()() {
+      DescriptorMatrix::Descriptor descriptor = (*descriptors)[no];
+      
+      for (unsigned int i = 0; i < descriptors->size(); i++) {
+        if (i == no) {
+          values[i] = HUGE_VALF;
+        } else {
+          values[i] = euclidean(descriptor.size(), descriptor, (*descriptors)[i]);
+        }
+      }
+    }
+  
+    DistanceComputer() {
+    }
+  
+    DistanceComputer(DescriptorMatrixRef descriptors, int no) {
+      this->descriptors = descriptors;
+      this->no = no;
+      values = std::vector<float>(descriptors->size(), 0.0f);
+    }
+};
+
 class SerializedMinimumMatrix {
   public:
     class ColumnDataLabel;
@@ -308,12 +347,166 @@ class SerializedMinimumMatrix {
   
     class Column {
       private:
+        class Modification {
+          public:
+            virtual size_t modifyLength(size_t& size) const = 0;
+            virtual int modifyIndex(int i) const = 0;
+            virtual void modifyVector(size_t& size, float values[]) const = 0;
+        };
+        
+        class SetValueModification : public virtual Modification {
+          private:
+            int si;
+            float value;
+          public:
+            virtual size_t modifyLength(size_t& size) const {
+              return size;
+            }
+            
+            virtual int modifyIndex(int i) const {
+              return i;
+            }
+            
+            virtual void modifyVector(size_t& size, float values[]) const {
+              values[si] = value;
+            }
+            
+            SetValueModification(int i, float v) {
+              si = i;
+              value = v;
+            }
+        };
+        
+        class DeleteModification : public virtual Modification {
+          private:
+            int di;
+          public:
+            virtual size_t modifyLength(size_t& size) const {
+              return size - 1;
+            }
+            
+            virtual int modifyIndex(int i) const {
+              if (i >= di) {
+                return i + 1;
+              }
+              return i;
+            }
+            
+            virtual void modifyVector(size_t& size, float values[]) const {
+              for (int i = 0; i < size - 1; i++) {
+                values[i] = values[i + 1];
+              }
+              size--;
+            }
+            
+            DeleteModification(int i) {
+              di = i;
+            }
+        };
+        
+        typedef boost::shared_ptr<Modification> ModificationRef;
+        typedef std::vector<ModificationRef> ModificationRefVector;
+      
+        ColumnDataLabelRef label;
+        boost::filesystem::path tmpfile;
+        
+        size_t valueCount;
+        boost::shared_ptr<float[]> values;
+        
+        ModificationRefVector modifications;
+        
+        void applyModifications() {
+          if (!modifications.empty()) {
+            BOOST_FOREACH (const ModificationRef& mod, modifications) {
+              mod->modifyVector(valueCount, values.get());
+            }
+            modifications.clear();
+          }
+        }
       public:
+        ColumnDataLabelRef getLabel() const {
+          return label;
+        }
+        
+        void load() {
+          std::fstream file(tmpfile.string().c_str(), std::ios_base::in);
+          file.read((char*) &valueCount, sizeof(valueCount));
+          values = boost::shared_ptr<float[]>(new float[valueCount]);
+          file.read((char*) values.get(), valueCount * sizeof(*(values.get())));
+
+          applyModifications();
+        }
+        
+        void save() {
+          applyModifications();
+
+          std::fstream file(tmpfile.string().c_str(), std::ios_base::out | std::ios_base::binary);
+          file.write((char*) &valueCount, sizeof(valueCount));
+          file.write((char*) values.get(), valueCount * sizeof(*(values.get())));
+        }
+        
+        void unload() {
+          values.reset();
+        }
+     
+        template <typename Iterator>   
+        Column(boost::filesystem::path tmpfile, Iterator begin, Iterator end) {
+          this->tmpfile = tmpfile;
+          
+          valueCount = 0;
+          for (Iterator it = begin; it != end; it++) {
+            valueCount++;
+          }
+          
+          values = boost::shared_ptr<float[]>(new float[valueCount]);
+          std::copy(begin, end, values.get());
+          
+          save();
+          unload();
+        }
     };
+    typedef std::vector<Column> ColumnVector;
   private:
+    DescriptorMatrixRef descriptorMatrix;
     boost::filesystem::path tmpDir;
+    
+    ColumnVector columns;
   public:
-    SerializedMinimumMatrix(const boost::filesystem::path& tmpDir) {
+    void computeDistances(size_t threadCount=1) {
+      columns.clear();
+      
+      boost::thread threads[threadCount];
+      DistanceComputer distanceComputers[threadCount];
+      
+      int threadOffset = 0;
+      for (int i = 0; i < descriptorMatrix->size(); i++) {
+        distanceComputers[threadOffset] = DistanceComputer(descriptorMatrix, i);
+        threads[threadOffset] = boost::thread(boost::ref(distanceComputers[threadOffset]));
+        threadOffset = (threadOffset + 1) % threadCount;
+        
+        if (threadOffset == 0) {
+          // Wait for threads to finish
+          for (int i = 0; i < threadCount; i++) {
+            threads[i].join();
+            
+            boost::filesystem::path tmpFilepath(tmpDir);
+            tmpFilepath += std::string("c") + boost::lexical_cast<std::string>(distanceComputers[i].no);
+            columns.push_back(Column(tmpFilepath, distanceComputers[i].values.begin(), distanceComputers[i].values.end()));
+          }
+        }
+      }
+      if (threadOffset > 0) {
+        for (int i = 0; i < threadOffset; i++) {
+          threads[i].join();
+          boost::filesystem::path tmpFilepath(tmpDir);
+          tmpFilepath += std::string("c") + boost::lexical_cast<std::string>(distanceComputers[i].no);
+          columns.push_back(Column(tmpFilepath, distanceComputers[i].values.begin(), distanceComputers[i].values.end()));
+        }
+      }
+    }
+  
+    SerializedMinimumMatrix(DescriptorMatrixRef descriptorMatrix, const boost::filesystem::path& tmpDir) {
+      this->descriptorMatrix = descriptorMatrix;
       this->tmpDir = tmpDir;
     }
 };
@@ -387,15 +580,22 @@ int main(int argc, char** argv) {
       return 4;
     }
     
+    const unsigned int threadCount = poValueMap["threads"].as<unsigned int>();
+    
+    cout << "Loading input file..." << endl;
     DescriptorMatrixRef descriptors;
     try {
-      descriptors = loadDescriptors(inputFile, poValueMap["threads"].as<unsigned int>());
+      descriptors = loadDescriptors(inputFile, threadCount);
       inputFile.close();
     }
     catch (const std::string& e) {
       cout << "Error during loading of input file: " << e << endl;
       return 5;
     }
+    
+    cout << "Computing distance matrix..." << endl;
+    SerializedMinimumMatrix minimumMatrix(descriptors, tmpDir);
+    minimumMatrix.computeDistances(threadCount);
     
     return 0;
   }
