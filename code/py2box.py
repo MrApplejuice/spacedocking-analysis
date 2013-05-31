@@ -4,7 +4,9 @@
 
 import sys
 import os
-sys.path += [os.path.join(os.path.realpath("."), os.path.dirname(sys.argv[0]), p) for p in ["py2", "universal"]]
+#sys.path += [os.path.join(os.path.realpath("."), os.path.dirname(sys.argv[0]), p) for p in ["py2", "universal"]]
+sys.path.insert(0, './universal/')
+sys.path.insert(0, './py2/')
 
 from readdata import *
 #from clustering import *
@@ -21,6 +23,7 @@ if len(sys.argv) > 1:
    else:
      print "Warning! unknown box", "'" + sys.argv[1] + "'", "- Falling back to guido"
      importedBox = False
+
 if not importedBox:
   from guidobox import *
   
