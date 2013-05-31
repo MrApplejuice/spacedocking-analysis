@@ -11,7 +11,8 @@ def testVisualOdometry(n_points=30):
 	rvec1 = rvec1[0];
 
 	# translation vector
-	t = np.random.rand(3,1)* 0.001;
+	t = np.random.rand(3,1);
+	print 't = %f, %f, %f' % (t[0], t[1], t[2]);
 	l2 = l1 + t;
 
 	# Rotation matrix:
@@ -62,16 +63,48 @@ def testVisualOdometry(n_points=30):
 	
 	distCoeffs = np.zeros([4]); # no clue what this means
 
-	pdb.set_trace();
+	# project the world points in the cameras:
 	result = cv2.projectPoints(points_world, rvec1, np.array([0.0]*3), K, distCoeffs);	
 	image_points1 = result[0];
 
 	result = cv2.projectPoints(points_world, rvec2, t, K, distCoeffs);
 	image_points2 = result[0];
+	
+	determineTransformation(image_points1, image_points2, K);
 
+def determineTransformation(points1, points2, K):
+	pdb.set_trace();
+	# find fundamental matrix:
+	(F, inliers) = cv2.findFundamentalMat(points1, points2);
+	
+	# extract essential matrix:
+	E = np.dot(K.transpose(), np.dot(F, K));
 
-def determineEssentialMatrix():
-	print 'a';
+	# extract R and t:
+	(U, Sigma, VT) = np.linalg.svd(E);
+	W1 = np.zeros([3,3]);	
+	W1[0,1] = -1;
+	W1[1,0] = 1;
+	W1[2,2] = 1;
+	W2 = W1.transpose();
+	
+	# method to directly retrieve the matrix / vector:
+	R1 = np.dot(U, np.dot(W1, VT));
+	R2 = np.dot(U, np.dot(W2, VT));
+	t1 = U[:,2]; # U[2,:] ?
+	t2 = -t1;
+	pdb.set_trace();
+	
+	# other method:
+	# tx = V W Sigma VT
+  # R = U W-1 VT
+	# or
+	# t = V Z VT
+
+	#Z = zeros([3,3]);
+	#Z[0,1] = -1;
+	#Z[1,0] = 1;
+	#tx = np.dot(VT.transpose(), np.dot(Z, VT));
 
 #cvFindFundamentalMat(const CvMat* points1, const CvMat* points2, CvMat* fundamentalMatrix, int method=CV_FM_RANSAC, double param1=1., double param2=0.99, CvMat* status=NULL)
 #cvDecomposeProjectionMatrix(const CvMat *projMatrix, CvMat *cameraMatrix, CvMat *rotMatrix, CvMat *transVect, CvMat *rotMatrX=NULL, CvMat *rotMatrY=NULL, CvMat *rotMatrZ=NULL, CvPoint3D64f *eulerAngles=NULL)
