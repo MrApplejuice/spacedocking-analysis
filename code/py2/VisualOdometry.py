@@ -2,7 +2,7 @@ import pdb
 import cv2
 import numpy as np
 
-def testVisualOdometry(n_points=30):
+def testVisualOdometry(n_points=100):
 
 	# location camera 1:
 	l1 = np.zeros([3,1]);
@@ -12,13 +12,13 @@ def testVisualOdometry(n_points=30):
 
 	# translation vector
 	t = np.zeros([3,1]);#np.random.rand(3,1);
-	t[2] = -3;
-	t[1] = -1;
+	t[2] = 0;
+	t[1] = 1;
 	print 't = %f, %f, %f' % (t[0], t[1], t[2]);
 	l2 = l1 + t;
 
 	# Rotation matrix:
-	phi = 0.0;#0.05 * np.pi;#0.001*(np.random.random(1)*2-1) * np.pi;
+	phi = 0.1 * np.pi;#0.001*(np.random.random(1)*2-1) * np.pi;
 	theta = 0.0;#0.001*(np.random.random(1)*2-1) * np.pi;
 	psi = 0.0;#0.001*(np.random.random(1)*2-1) * np.pi;
 
@@ -77,10 +77,26 @@ def testVisualOdometry(n_points=30):
 
 	result = cv2.projectPoints(points_world, rvec2, t, K, distCoeffs);
 	image_points2 = result[0];
-	
-	pdb.set_trace();
 
-	determineTransformation(image_points1, image_points2, K, W, H);
+	# determine the rotation and translation between the two views:
+	# (R, t) = determineTransformation(image_points1, image_points2, K, W, H);
+
+	# reproject the points into the 3D-world:
+
+	# P1 is at the origin
+	P1 = np.zeros([3, 4]);
+	P1[:3,:3] = np.eye(3);
+
+	# P2 is rotated and translated with respect to camera 1:
+	P2 = np.zeros([3, 4]);
+	P2[:3,:3] = R2;
+	pdb.set_trace();
+	P2[:,3] = t.transpose();
+
+	ip1 = cv2.convertPointsToHomogeneous(image_points1);
+	ip2 = cv2.convertPointsToHomogeneous(image_points2);
+
+	pdb.set_trace();
 
 def determineTransformation(points1, points2, K, W, H):
 
@@ -104,10 +120,14 @@ def determineTransformation(points1, points2, K, W, H):
 	# method to directly retrieve the matrix / vector:
 	R1 = np.dot(U, np.dot(W1, VT));
 	R2 = np.dot(U, np.dot(W2, VT));
-	t1 = U[:,2]; # U[2,:] ?
+	t1 = U[:,2];
 	t2 = -t1;
 	pdb.set_trace();
-	
+	R = R1; 
+	t = t1;
+
+	return (R, t)
+
 	# other method:
 	# tx = V W Sigma VT
   # R = U W-1 VT
@@ -120,14 +140,18 @@ def determineTransformation(points1, points2, K, W, H):
 	#tx = np.dot(VT.transpose(), np.dot(Z, VT));
 
 	# check:
-	# image_coord = R * X + t
+	# image_coord = R * X_world + t
 
 #cvFindFundamentalMat(const CvMat* points1, const CvMat* points2, CvMat* fundamentalMatrix, int method=CV_FM_RANSAC, double param1=1., double param2=0.99, CvMat* status=NULL)
 #cvDecomposeProjectionMatrix(const CvMat *projMatrix, CvMat *cameraMatrix, CvMat *rotMatrix, CvMat *transVect, CvMat *rotMatrX=NULL, CvMat *rotMatrY=NULL, CvMat *rotMatrZ=NULL, CvPoint3D64f *eulerAngles=NULL)
 # void cvProjectPoints2(const CvMat* objectPoints, const CvMat* rvec, const CvMat* tvec, const CvMat* cameraMatrix, const CvMat* distCoeffs, CvMat* imagePoints, CvMat* dpdrot=NULL, CvMat* dpdt=NULL, CvMat* dpdf=NULL, CvMat* dpdc=NULL, CvMat* dpddist=NULL)
 
+# python photogrammetry toolbox:
+# http://www.arc-team.homelinux.com/arcteam/ppt.php
+# http://vai.uibk.ac.at/dadp/doku.php?id=ppt_loewen_en
 
-
+# entire projective geometry
+# http://homepages.inf.ed.ac.uk/rbf/CVonline/LOCAL_COPIES/FUSIELLO4/tutorial.html#x1-15002r24
 
 #http://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
 #http://en.wikipedia.org/wiki/Cross_product#Conversion_to_matrix_multiplication
