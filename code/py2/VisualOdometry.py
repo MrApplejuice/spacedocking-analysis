@@ -86,12 +86,12 @@ def testVisualOdometry(n_points=100):
 	# P1 is at the origin
 	P1 = np.zeros([3, 4]);
 	P1[:3,:3] = np.eye(3);
-
+	P1 = np.dot(K, P1);
 	# P2 is rotated and translated with respect to camera 1:
 	P2 = np.zeros([3, 4]);
 	P2[:3,:3] = R2;
 	P2[:,3] = t.transpose();
-
+	P2 = np.dot(K, P2);
 	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
 	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
 
