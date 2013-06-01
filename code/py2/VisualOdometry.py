@@ -90,13 +90,42 @@ def testVisualOdometry(n_points=100):
 	# P2 is rotated and translated with respect to camera 1:
 	P2 = np.zeros([3, 4]);
 	P2[:3,:3] = R2;
-	pdb.set_trace();
 	P2[:,3] = t.transpose();
 
-	ip1 = cv2.convertPointsToHomogeneous(image_points1);
-	ip2 = cv2.convertPointsToHomogeneous(image_points2);
+	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
+	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
+
+	X = triangulate(ip1, ip2, P1, P2);
 
 	pdb.set_trace();
+
+def triangulate_point(x1,x2,P1,P2):
+	""" Point pair triangulation from 
+			least squares solution. """
+        
+	M = np.zeros((6,6))
+	M[:3,:4] = P1
+	M[3:,:4] = P2
+	M[:3,4] = -x1
+	M[3:,5] = -x2
+
+	U,S,V = np.linalg.svd(M)
+	X = V[-1,:4]
+
+	return X / X[3]
+
+
+def triangulate(x1,x2,P1,P2):
+	"""    Two-view triangulation of points in 
+					x1,x2 (3*n homog. coordinates). """
+        
+	n = x1.shape[0]
+	if x2.shape[0] != n:
+		raise ValueError("Number of points don't match.")
+
+	X = [ np.asarray(triangulate_point(x1[i,:],x2[i,:],P1,P2)) for i in range(n)]
+	
+	return X #np.array(X).T
 
 def determineTransformation(points1, points2, K, W, H):
 
