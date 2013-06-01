@@ -11,14 +11,16 @@ def testVisualOdometry(n_points=30):
 	rvec1 = rvec1[0];
 
 	# translation vector
-	t = np.random.rand(3,1);
+	t = np.zeros([3,1]);#np.random.rand(3,1);
+	t[2] = -3;
+	t[1] = -1;
 	print 't = %f, %f, %f' % (t[0], t[1], t[2]);
 	l2 = l1 + t;
 
 	# Rotation matrix:
-	phi = 0.001*(np.random.random(1)*2-1) * np.pi;
-	theta = 0.001*(np.random.random(1)*2-1) * np.pi;
-	psi = 0.001*(np.random.random(1)*2-1) * np.pi;
+	phi = 0.0;#0.05 * np.pi;#0.001*(np.random.random(1)*2-1) * np.pi;
+	theta = 0.0;#0.001*(np.random.random(1)*2-1) * np.pi;
+	psi = 0.0;#0.001*(np.random.random(1)*2-1) * np.pi;
 
 	R_phi = np.zeros([3,3]);
 	R_phi[0,0] = 1;
@@ -42,13 +44,17 @@ def testVisualOdometry(n_points=30):
 	R_psi[2,2] = 1;
 
 	R2 = np.dot(R_psi, np.dot(R_theta, R_phi));
+	
+	print 'R = '
+	for row in range(3):
+		print '%f, %f, %f' % (R2[row, 0], R2[row, 1], R2[row, 2])
 
 	rvec2 = cv2.Rodrigues(R2);
 	rvec2 = rvec2[0];
 
 	# create X, Y, Z points:
 	size = 3;
-	distance = 4;
+	distance = 8;
 	transl = np.zeros([1,3]);
 	transl[0,2] = distance;
 	points_world = np.zeros([n_points, 3]);
@@ -57,8 +63,10 @@ def testVisualOdometry(n_points=30):
 
 	# camera calibration matrix:
 	K = np.zeros([3,3]);
-	K[0,0] = 320.0;
-	K[1,1] = 240.0;
+	W = 320.0;
+	H = 240.0;
+	K[0,0] = W;
+	K[1,1] = H;
 	K[2,2] = 1.0;
 	
 	distCoeffs = np.zeros([4]); # no clue what this means
@@ -70,12 +78,17 @@ def testVisualOdometry(n_points=30):
 	result = cv2.projectPoints(points_world, rvec2, t, K, distCoeffs);
 	image_points2 = result[0];
 	
-	determineTransformation(image_points1, image_points2, K);
-
-def determineTransformation(points1, points2, K):
 	pdb.set_trace();
+
+	determineTransformation(image_points1, image_points2, K, W, H);
+
+def determineTransformation(points1, points2, K, W, H):
+
 	# find fundamental matrix:
+	# we need to pass normal image points:
 	(F, inliers) = cv2.findFundamentalMat(points1, points2);
+	#res = np.dot(M1, np.dot(F, M2.transpose()));
+	
 	
 	# extract essential matrix:
 	E = np.dot(K.transpose(), np.dot(F, K));
@@ -106,7 +119,66 @@ def determineTransformation(points1, points2, K):
 	#Z[1,0] = 1;
 	#tx = np.dot(VT.transpose(), np.dot(Z, VT));
 
+	# check:
+	# image_coord = R * X + t
+
 #cvFindFundamentalMat(const CvMat* points1, const CvMat* points2, CvMat* fundamentalMatrix, int method=CV_FM_RANSAC, double param1=1., double param2=0.99, CvMat* status=NULL)
 #cvDecomposeProjectionMatrix(const CvMat *projMatrix, CvMat *cameraMatrix, CvMat *rotMatrix, CvMat *transVect, CvMat *rotMatrX=NULL, CvMat *rotMatrY=NULL, CvMat *rotMatrZ=NULL, CvPoint3D64f *eulerAngles=NULL)
 # void cvProjectPoints2(const CvMat* objectPoints, const CvMat* rvec, const CvMat* tvec, const CvMat* cameraMatrix, const CvMat* distCoeffs, CvMat* imagePoints, CvMat* dpdrot=NULL, CvMat* dpdt=NULL, CvMat* dpdf=NULL, CvMat* dpdc=NULL, CvMat* dpddist=NULL)
+
+
+
+
+#http://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+#http://en.wikipedia.org/wiki/Cross_product#Conversion_to_matrix_multiplication
+#http://en.wikipedia.org/wiki/Essential_matrix
+#http://stackoverflow.com/questions/6211809/how-to-calculate-normalized-image-coordinates-from-pixel-coordinates
+#http://stackoverflow.com/questions/15940663/correct-way-to-extract-translation-from-essential-matrix-through-svd
+#http://stackoverflow.com/questions/15157756/where-do-i-add-a-scale-factor-to-the-essential-matrix-to-produce-a-real-world-tr
+#http://stackoverflow.com/questions/5533856/how-to-calculate-the-fundamental-matrix-for-stereo-vision
+#http://docs.opencv.org/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html
+#http://opencv.willowgarage.com/documentation/camera_calibration_and_3d_reconstruction.html
+#http://stackoverflow.com/questions/3678317/t-and-r-estimation-from-essential-matrix
+#http://stackoverflow.com/questions/10187582/opencv-python-fundamental-and-essential-matrix-do-not-agree
+
+
+#	# p2 = points2.tolist();
+#	p2 = points2;
+#	for p in p2:
+#		#p = p[0];
+#		p[0] /= W
+#		p[1] /= H
+#		p[0] -= 1/2
+#		p[1] -= 1/2
+#		#p.append(1);
+#p1 = np.asarray(p1);
+#p2 = np.asarray(p2);
+#M1 = np.matrix(p1);
+#M2 = np.matrix(p2);
+
+
+
+# to homogeneous coordinates:
+	# p2 = points2.tolist();
+#	p2 = points2;
+	#for p in p2:
+		#p = p[0];
+		#p[0,0] /= W
+		#p[0,1] /= H
+		#p[0,0] -= 0.5
+		#p[0,1] -= 0.5
+		#p.append(1);
+	#p1 = points1.tolist();
+#	p1 = points1;
+#	for p in p1:
+		#p = p[0];
+#		p[0,0] /= W
+	#	p[0,1] /= H
+		#p[0,0] -= 0.5
+		#p[0,1] -= 0.5
+		#p.append(1);
+	#p1 = np.asarray(p1);
+	#p2 = np.asarray(p2);
+	#M1 = np.matrix(p1);
+	#M2 = np.matrix(p2);
 
