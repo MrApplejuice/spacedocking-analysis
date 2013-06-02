@@ -15,6 +15,8 @@ def testVisualOdometry(n_points=100):
 	t[2] = 0;
 	t[1] = 1;
 	print 't = %f, %f, %f' % (t[0], t[1], t[2]);
+	scale = np.linalg.norm(t);
+	print 'scale = %f' % scale;
 	l2 = l1 + t;
 
 	# Rotation matrix:
@@ -79,25 +81,120 @@ def testVisualOdometry(n_points=100):
 	image_points2 = result[0];
 
 	# determine the rotation and translation between the two views:
-	# (R, t) = determineTransformation(image_points1, image_points2, K, W, H);
+	(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
+	#R21 = R2.T;
+	#R22 = R2;
+	#t21 = -t;
+	#t22 = t;
 
-	# reproject the points into the 3D-world:
+
+	# 3D-reconstruction:
+	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
+	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
 
 	# P1 is at the origin
 	P1 = np.zeros([3, 4]);
 	P1[:3,:3] = np.eye(3);
 	P1 = np.dot(K, P1);
-	# P2 is rotated and translated with respect to camera 1:
-	P2 = np.zeros([3, 4]);
-	P2[:3,:3] = R2;
-	P2[:,3] = t.transpose();
-	P2 = np.dot(K, P2);
-	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
-	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
 
-	X = triangulate(ip1, ip2, P1, P2);
+	# P2 is rotated and translated with respect to camera 1
+	# determine the right R, t:
+	# iterate over all points, reproject them to the 3D-world
+	# exclude one of the options as soon as 	
+	# first determine all 4 projection matrices:
+	R2s = [];
+	R2s.append(R21);
+	R2s.append(R22);
+	t2s = [];
+	t2s.append(t21);
+	t2s.append(t22);
+
+	# reproject the points into the 3D-world:
+	index_r = 0; index_t = 0;
+	for ir in range(2):
+		for it in range(2):
+			point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
+
+			if(point_behind == 0):
+				index_r = ir;
+				index_t = it;
+				break;
+
+	P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
+	R2_est = R2s[index_r]; t2_est = t2s[index_t];
+
+	# triangulate the image points to obtain world coordinates:
+	X_est = triangulate(ip1, ip2, P1, P2_est);
 
 	pdb.set_trace();
+
+	# now we have R2, t2, and X, which we return:
+	return (R2_est, t2_est, X_est);	
+
+def infeasibleP2(x1, x2, R1, t1, R2, t2, K):
+	""" Triangulates a single point and checks whether it lies
+			behind one of the cameras. If so, it returns 1, else 0. """
+
+	infeasible = 0;
+
+	#n = x1.shape[0]
+	#if x2.shape[0] != n:
+	#	raise ValueError("Number of points don't match.")
+	n = 1;	
+
+	# get P1, P2 for triangulation:
+	P1 = getProjectionMatrix(R1, t1, K);
+	P2 = getProjectionMatrix(R2, t2, K);
+
+	# a point is behind the camera, if the angle between the optical axis and the world point
+	# is larger than 90 degrees:
+	# cos(theta) = (v1 * v2) / (norm(v1) * norm(v2))
+	# abs(theta) = abs(acos(...) > 0.25 pi)
+
+	#optical_axis = np.array(3);
+	#optical_axis[2] = 1.0;
+	#OA1 = np.dot(R1, optical_axis);
+	#OA2 = np.dot(R2, optical_axis);
+	
+	IR1 = np.linalg.inv(R1);
+	IR2 = np.linalg.inv(R2);
+
+	# triangulating one point should suffice (in a noiseless world?)
+	for i in range(n):
+		# triangulate point to world coordinates:
+		X_w = np.asarray(triangulate_point(x1[i,:],x2[i,:],P1,P2));
+		# v1 is the vector from camera 1's optical center to the world point
+		v1 = X_w[:3] - t1.T;
+		# rotate the vector with the inverse rotation
+		v1 = np.dot(IR1, v1.T);
+		# check whether behind camera:
+		if(v1[2] < 0):
+			infeasible = 1;
+			break;
+		# v2 points from the second camera's optical center to the world point:
+		v2 = X_w[:3] - t2.T;
+		# camera 2's optical axis is rotated with R2, so here 
+		v2 = np.dot(IR2, v2.T);
+		if(v2[2] < 0):
+			infeasible = 1;
+			break;
+	
+	return infeasible;
+
+	# in case (b) it can immediately return the triangulated points as well...
+
+	
+
+
+def getProjectionMatrix(R, t, K):
+	""" On the basis of a rotation matrix R, a translation vector t,
+			and camera calibration matrix K, determines the projection matrix P """
+	P = np.zeros([3, 4]);
+	P[:3,:3] = R;
+	P[:,3] = t.transpose();
+	P = np.dot(K, P);
+	return P;
+
 
 def triangulate_point(x1,x2,P1,P2):
 	""" Point pair triangulation from 
@@ -151,11 +248,8 @@ def determineTransformation(points1, points2, K, W, H):
 	R2 = np.dot(U, np.dot(W2, VT));
 	t1 = U[:,2];
 	t2 = -t1;
-	pdb.set_trace();
-	R = R1; 
-	t = t1;
 
-	return (R, t)
+	return (R1, R2, t1, t2)
 
 	# other method:
 	# tx = V W Sigma VT
