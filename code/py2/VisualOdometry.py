@@ -2,6 +2,68 @@ import pdb
 import cv2
 import numpy as np
 
+def performStructureFromMotion(image_points1, image_points2, K, WIDTH, HEIGHT):
+	""" Performs structure from motion on the basis of image matches (image_points1, image_points2, both Nx2),
+			a calibration matrix K, and a given width and height of an image. 
+			
+			It returns (R, t, X), i.e., a rotation matrix R, translation t, and world points X.
+	"""
+	
+	# determine the rotation and translation between the two views:
+	(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
+
+	# 3D-reconstruction:
+	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
+	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
+
+	# P1 is at the origin
+	P1 = np.zeros([3, 4]);
+	P1[:3,:3] = np.eye(3);
+	P1 = np.dot(K, P1);
+
+	# P2 is rotated and translated with respect to camera 1
+	# determine the right R, t:
+	# reproject a point to the 3D-world
+	# exclude the camera if the point falls behind it. 	
+	# first determine all 4 projection matrices:
+	R2s = [];
+	R2s.append(R21);
+	R2s.append(R22);
+	t2s = [];
+	t2s.append(t21);
+	t2s.append(t22);
+
+	# reproject the points into the 3D-world:
+	index_r = 0; index_t = 0;
+	for ir in range(2):
+		for it in range(2):
+			point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
+
+			if(point_behind == 0):
+				index_r = ir;
+				index_t = it;
+				print 'ir, it = %d, %d' % (ir, it)
+
+	P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
+	R2_est = R2s[index_r]; t2_est = t2s[index_t];
+
+	# triangulate the image points to obtain world coordinates:
+	X_est = triangulate(ip1, ip2, P1, P2_est);
+
+	print 't_est = %f, %f, %f' % (t2_est[0], t2_est[1], t2_est[2]);
+	print 'R = '
+	printRotationMatrix(R2_est);
+
+	# now we have R2, t2, and X, which we return:
+	return (R2_est, t2_est, X_est);	
+
+def getK(W=640.0, H=480.0):
+	""" Constructs a standard calibration matrix given a width and height in pixels. """
+	K = np.zeros([3,3]);
+	K[0,0] = W;
+	K[1,1] = H;
+	K[2,2] = 1.0;
+
 def testVisualOdometry(n_points=100):
 
 	# location camera 1:
@@ -12,16 +74,16 @@ def testVisualOdometry(n_points=100):
 
 	# translation vector
 	t = np.zeros([3,1]);#np.random.rand(3,1);
-	t[2] = 0;
-	t[1] = 3;
+	t[2] = 1;
+	t[1] = 0;
 	print 't = %f, %f, %f' % (t[0], t[1], t[2]);
 	scale = np.linalg.norm(t);
 	print 'scale = %f' % scale;
 	l2 = l1 + t;
 
 	# Rotation matrix:
-	phi = 0.1 * np.pi;#0.001*(np.random.random(1)*2-1) * np.pi;
-	theta = 0.0;#0.001*(np.random.random(1)*2-1) * np.pi;
+	phi = 0.2 * np.pi;#0.001*(np.random.random(1)*2-1) * np.pi;
+	theta = 0.1 * np.pi;#0.001*(np.random.random(1)*2-1) * np.pi;
 	psi = 0.0;#0.001*(np.random.random(1)*2-1) * np.pi;
 
 	R_phi = np.zeros([3,3]);
@@ -54,7 +116,7 @@ def testVisualOdometry(n_points=100):
 	rvec2 = rvec2[0];
 
 	# create X, Y, Z points:
-	size = 3;
+	size = 8;
 	distance = 8;
 	transl = np.zeros([1,3]);
 	transl[0,2] = distance;
@@ -81,6 +143,13 @@ def testVisualOdometry(n_points=100):
 
 	# determine the rotation and translation between the two views:
 	(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
+	# pdb.set_trace();
+	# 'wrong' solutions have a negative element on the diagonal, but calling determineTransformation repetitively does not help... 
+	# ws = wrongSolution(R21, R22);
+	# while(ws == 1):
+			# (R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
+			# ws = wrongSolution(R21, R22);
+
 	print 'R21 = '
 	printRotationMatrix(R21);
 	print 'R22 = '
@@ -139,15 +208,22 @@ def testVisualOdometry(n_points=100):
 	printRotationMatrix(R2_est);
 	print 'Scale = %f, Mean scale = %f' % (scale, np.mean(scales));
 
+	# scale:
+	X_est = X_est * scale;	
 
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
 
 def printRotationMatrix(R):
 
-		for row in range(3):
-			print '%f, %f, %f' % (R[row, 0], R[row, 1], R[row, 2])
+	rows = R.shape[0];
+	columns = R.shape[1];
 
+	for row in range(rows):
+		print '';
+		for col in range(columns):
+			print '%f ' % (R[row, col]),
+	print ''
 	
 
 def infeasibleP2(x1, x2, R1, t1, R2, t2, K):
@@ -245,17 +321,47 @@ def triangulate(x1,x2,P1,P2):
 
 def determineTransformation(points1, points2, K, W, H):
 
+	DEBUG = False;
+
 	# find fundamental matrix:
-	# we need to pass normal image points:
-	(F, inliers) = cv2.findFundamentalMat(points1, points2);
-	#res = np.dot(M1, np.dot(F, M2.transpose()));
+	OPENCV = True;
+	if(OPENCV):
+		# we need to pass image points going from 0 to W, 0 to H:
+		# a small change in the fundamental matrix can make a big difference after the SVD... how to solve this?
+		max_dist_el = 1.0;
+		prob_sure = 0.9999;
+		(F, inliers) = cv2.findFundamentalMat(points1, points2, cv2.FM_LMEDS, max_dist_el, prob_sure);
+		#res = np.dot(M1, np.dot(F, M2.transpose()));
+	else:
+		x1 = transformPointsSFM(points1);
+		x2 = transformPointsSFM(points2);
+		F = compute_fundamental_normalized(x1,x2);
+
 	
+	if(DEBUG):
+		print 'F = '
+		printRotationMatrix(F);
 	
 	# extract essential matrix:
 	E = np.dot(K.transpose(), np.dot(F, K));
 
+	if(DEBUG):
+		print 'E = '
+		printRotationMatrix(E);
+	
+
 	# extract R and t:
 	(U, Sigma, VT) = np.linalg.svd(E);
+
+	if(DEBUG):
+		print 'U = '
+		printRotationMatrix(U);
+		#print 'Sigma = '
+		#printRotationMatrix(Sigma);
+		print 'VT = '
+		printRotationMatrix(VT);
+
+
 	W1 = np.zeros([3,3]);	
 	W1[0,1] = -1;
 	W1[1,0] = 1;
@@ -269,6 +375,96 @@ def determineTransformation(points1, points2, K, W, H):
 	t2 = -t1;
 
 	return (R1, R2, t1, t2)
+
+def transformPointsSFM(points):
+	n_points = points.shape[0];
+	x = np.array([[0.0]*n_points, [0.0]*n_points, [0.0]*n_points]);
+	for p in range(n_points):
+		x[0][p] = points[p,0,0];
+		x[1][p] = points[p,0,1];
+		x[2][p] = 1.0;
+	return x;
+
+def compute_fundamental(x1,x2):
+	"""    Computes the fundamental matrix from corresponding points 
+        (x1,x2 3*n arrays) using the 8 point algorithm.
+        Each row in the A matrix below is constructed as
+        [x'*x, x'*y, x', y'*x, y'*y, y', x, y, 1] """
+  
+	n = x1.shape[1]
+	if x2.shape[1] != n:
+		raise ValueError("Number of points don't match.")
+    
+	# build matrix for equations
+	A = np.zeros((n,9))
+	for i in range(n):
+		A[i] = [x1[0,i]*x2[0,i], x1[0,i]*x2[1,i], x1[0,i]*x2[2,i],
+                x1[1,i]*x2[0,i], x1[1,i]*x2[1,i], x1[1,i]*x2[2,i],
+                x1[2,i]*x2[0,i], x1[2,i]*x2[1,i], x1[2,i]*x2[2,i] ]
+            
+	# compute linear least square solution
+	U,S,V = np.linalg.svd(A)
+	F = V[-1].reshape(3,3)
+	# constrain F
+	# make rank 2 by zeroing out last singular value
+	U,S,V = np.linalg.svd(F)
+	S[2] = 0
+	F = np.dot(U,np.dot(np.diag(S),V))
+    
+	return F/F[2,2]
+
+def compute_fundamental_normalized(x1,x2):
+	"""    Computes the fundamental matrix from corresponding points 
+        (x1,x2 3*n arrays) using the normalized 8 point algorithm. """
+
+	n = x1.shape[1]
+	if x2.shape[1] != n:
+		raise ValueError("Number of points don't match.")
+
+	# normalize image coordinates
+	x1 = x1 / x1[2]
+	mean_1 = np.mean(x1[:2],axis=1)
+	S1 = np.sqrt(2) / np.std(x1[:2])
+	T1 = np.array([[S1,0,-S1*mean_1[0]],[0,S1,-S1*mean_1[1]],[0,0,1]])
+	x1 = np.dot(T1,x1)
+    
+	x2 = x2 / x2[2]
+	mean_2 = np.mean(x2[:2],axis=1)
+	S2 = np.sqrt(2) / np.std(x2[:2])
+	T2 = np.array([[S2,0,-S2*mean_2[0]],[0,S2,-S2*mean_2[1]],[0,0,1]])
+	x2 = np.dot(T2,x2)
+
+	# compute F with the normalized coordinates
+	F = compute_fundamental(x1,x2)
+
+	# reverse normalization
+	F = np.dot(T1.T,np.dot(F,T2))
+
+	return F/F[2,2]
+
+
+def wrongSolution(R1, R2):
+	# wrong solutions due to small variations in the fundamental matrix have a negative diagonal element
+	# this simple method detects such solutions
+	pdb.set_trace();
+
+	neg_diag = 0;
+	for d in range(3):
+		if(R1[d,d] < 0):
+			neg_diag += 1;
+			break;
+
+	for d in range(3):
+		if(R2[d,d] < 0):
+			neg_diag += 1;
+			break;
+	
+	if(neg_diag == 2):
+		return 1;
+	else:
+		return 0;
+	
+
 
 	# other method:
 	# tx = V W Sigma VT
