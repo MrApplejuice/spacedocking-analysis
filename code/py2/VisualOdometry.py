@@ -13,7 +13,7 @@ def testVisualOdometry(n_points=100):
 	# translation vector
 	t = np.zeros([3,1]);#np.random.rand(3,1);
 	t[2] = 0;
-	t[1] = 1;
+	t[1] = 3;
 	print 't = %f, %f, %f' % (t[0], t[1], t[2]);
 	scale = np.linalg.norm(t);
 	print 'scale = %f' % scale;
@@ -48,8 +48,7 @@ def testVisualOdometry(n_points=100):
 	R2 = np.dot(R_psi, np.dot(R_theta, R_phi));
 	
 	print 'R = '
-	for row in range(3):
-		print '%f, %f, %f' % (R2[row, 0], R2[row, 1], R2[row, 2])
+	printRotationMatrix(R2);
 
 	rvec2 = cv2.Rodrigues(R2);
 	rvec2 = rvec2[0];
@@ -82,6 +81,10 @@ def testVisualOdometry(n_points=100):
 
 	# determine the rotation and translation between the two views:
 	(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
+	print 'R21 = '
+	printRotationMatrix(R21);
+	print 'R22 = '
+	printRotationMatrix(R22);
 	#R21 = R2.T;
 	#R22 = R2;
 	#t21 = -t;
@@ -118,7 +121,7 @@ def testVisualOdometry(n_points=100):
 			if(point_behind == 0):
 				index_r = ir;
 				index_t = it;
-				break;
+				print 'ir, it = %d, %d' % (ir, it)
 
 	P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
 	R2_est = R2s[index_r]; t2_est = t2s[index_t];
@@ -126,10 +129,26 @@ def testVisualOdometry(n_points=100):
 	# triangulate the image points to obtain world coordinates:
 	X_est = triangulate(ip1, ip2, P1, P2_est);
 
-	pdb.set_trace();
+	scales = np.array([0.0] * n_points);
+	for i in range(n_points):
+		scales[i] = X_est[i][0] / points_world[i][0];
+
+
+	print 't_est = %f, %f, %f' % (t2_est[0], t2_est[1], t2_est[2]);
+	print 'R = '
+	printRotationMatrix(R2_est);
+	print 'Scale = %f, Mean scale = %f' % (scale, np.mean(scales));
+
 
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
+
+def printRotationMatrix(R):
+
+		for row in range(3):
+			print '%f, %f, %f' % (R[row, 0], R[row, 1], R[row, 2])
+
+	
 
 def infeasibleP2(x1, x2, R1, t1, R2, t2, K):
 	""" Triangulates a single point and checks whether it lies
