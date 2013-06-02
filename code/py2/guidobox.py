@@ -17,7 +17,7 @@ import numpy as np;
 from matplotlib import pyplot as pl;
 from matplotlib.transforms import Affine2D
 from mpl_toolkits.axes_grid import AxesGrid
-
+from VisualOdometry import *
 import pylab as Plot
 
 # size(result) -> total number of samples
@@ -321,7 +321,10 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	vis[:h1, :w1] = img1_gray
 	vis[:h2, w1:w1+w2] = img2_gray
 	vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-	
+
+	points1 = [];
+	points2 = [];
+
 	# match the features:
 	for ft1 in range(n_features1):
 	
@@ -345,8 +348,10 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 			# octave
 			x1 = keypoints1[ft1].pt[0];
 			y1 = keypoints1[ft1].pt[1];
+			points1.append(np.array([x1, y1]));
 			x2 = keypoints2[sindices[0]].pt[0];
 			y2 = keypoints2[sindices[0]].pt[1];
+			points1.append(np.array([x2, y2]));
 			#cv2.circle(img1, (int(x1), int(y1)), 4, (0.0,255.0,0.0), -1)
 			#cv2.circle(img2, (int(x2), int(y2)), 4, (0.0,255.0,0.0), -1)
 			cv2.line(vis, (int(x1), int(y1)), (int(x2+w1), int(y2)), (0.0, 255.0, 0.0), 1)
@@ -358,6 +363,15 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	#cv2.namedWindow("img2", cv2.cv.CV_WINDOW_NORMAL)
 	#cv2.imshow('img2',img2)
 
+	# get dummy camera calibration matrix:
+	K = getK(w1, h1);
+
+	# 3D reconstruction:
+	(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, w1, h1);
+
+	# show 3D reconstruction:
+	
+	
 def investigateResponseValues(image_name):
 	# extract keypoint features:
 	(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name, IM_RESIZE=True);
