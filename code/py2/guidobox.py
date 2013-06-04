@@ -445,13 +445,18 @@ def getFeaturesWithDistance(sample)
 	vx = np.array([0.0] * (n_frames-1));
 	vy = np.array([0.0] * (n_frames-1));
 	vz = np.array([0.0] * (n_frames-1));
-
+	IPs1 = [];
+	IPs2 = [];
 	# get all frame-to-frame reconstructions:
 	for fr in range(n_frames-1):
 		
 		# get the relevant image points:
 		(image_points1, image_points2) = getImagePoints(FTS_USED, fr, fr+1);
-		
+
+		# remember the image points for subsequent bundle adjustment
+		IPs1.append(image_points1);
+		IPs2.append(image_points2);
+
 		# 3D reconstruction without scale:
 		(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, W, H);
 
@@ -470,13 +475,144 @@ def getFeaturesWithDistance(sample)
 
 	# 3) Perform some kind of bundle adjustment
 	
+	# Representation to optimize: let's start with something traditional to allow for straightforward
+	# Levenberg-Marcquardt:
+	# [R2, ..., Rm, t2, ..., tm, X1, Y1, Z1, ..., Xn, Yn, Zn]
+	# Later we can think of a more compact representation with angles for the rotation matrices, direction
+	# and speed for the translations, and inverse coordinates for X, Y, and Z.
+
 	# First we need to transform the translations, rotations, and world points
 	# to a common frame of reference, that of the first camera view.
+
+	# the first elements in these vectors are already in the frame-of-reference of the first camera:
+	Rs = [Rotations[0]];
+	Ts = [Translations[0]];
+	pw = [points_world[0]];
+
+	for fr in range(n_frames-2):
+		matrix_ind = fr+1;
+		# first determine the rotation up until the first camera of the current pair:
+		Rotation_cam1 = np.eye(3);
+		for ff in range(matrix_ind):
+			Rotation_cam1 = np.dot(Rotation_cam1, Rs[ff]);
+		# the translation is expressed with respect to the first camera of the current pair;
+		translation_cam1 = np.dot(Rotation_cam1, Ts[matrix_ind]);
+		Ts.append(translation_cam1);
+		# the same goes for the world points:
+		n_world_points = len(X);
+		X_cam1 = [];
+		for wp in range(n_world_points):
+			X_cam1.append(np.dot(Rotation_cam1, points_world[matrix_ind][wp]));
+		pw.append(X_cam1);
+		# then multiply the rotation with the rotation to the second camera of the pair:
+		Rotation_cam1 = np.dot(Rotation_cam1, Rotations[matrix_ind]);
+		# add it to the list of rotations:
+		Rs = Rs.append(Rotation_cam1);
 	
+	# First we determine what world point coordinates to start with:
+	X = determineWorldPoints(pw);
+	
+	# Then concatenate everything into a large vector:
+	genome = transformMatricesToGenome(Rs, Ts, X);
+	
+	# And optimize:
+	# optimizeReconstructionGenome(genome, IPs1, IPs2, n_frames-1, n_world_points);
 
-		
-		
+	# transform the genome back to matrices:
+	(Rs, Ts, X) = transformGenomeToMatrices(genome, n_cameras, n_world_points);
 
+	# Now we have all rotations and translations in the frame of camera 1, 
+	# and the world points. We now want to know the distances to the points
+	# in the final image:
+	
+	
+		
+def transformMatricesToGenome(Rs, Ts, X):
+	""" Transforms lists of rotation matrices, translation vectors, and world points to a vector that can be used for optimization.
+	"""
+	genome = [];
+	n_mats = len(Rs);
+	# Rotations:
+	for m in range(n_mats):
+		R = Rs[m].tolist();
+		n_rows = len(R);
+		for r in range(n_rows):
+			for c in range(3):
+				genome.append(R[r][c]);
+
+	# Translations:
+	for m in range(n_mats):
+		t = Ts[m].tolist();
+		for ti in range(3):
+			genome.append(t[ti]);
+
+	# World points:
+	n_world_points = len(X);
+	for p in range(n_world_points):
+		genome.append(X[p].tolist());
+
+	return genome;
+
+def transformGenomeToMatrices(genome, n_cameras, n_world_points):
+	""" Transforms the optimized genome to rotation matrices, translation vectors, and world points.
+	"""
+
+	# Get rotation matrices:
+	Rs = [];
+	nR = 9;
+	for cam in range(n_cameras):
+		part = genome[cam*nR:(cam+1)*nR];
+		R = np.zeros([3,3]);
+		index = 0;
+		for r in range(3):
+			for c in range(3):
+				R[r][c] = part[index];
+				index += 1;
+		Rs.append(R);
+	
+	# Get translation vectors:
+	start_ind = n_cameras * nR;
+	Ts = [];
+	nT = 3;
+	for cam in range(n_cameras):
+		part = genome[start_ind + cam * nT : start_ind + (cam+1) * nT];
+		t = np.zeros([3,1]);
+		for ti in range(nT):
+				t[ti] = part[ti];
+		Ts.append(t);
+
+	# Get the world points:
+	start_ind = start_ind + n_cameras * nT;
+	pw = [];
+	nX = 3;
+	for p in range(n_world_points):
+		part = genome[start_ind + p * nX : start_ind + (p+1) * nX];	
+		point = np.array(part);
+		pw.append(point);
+
+	return (Rs, Ts, pw);
+	
+	
+def determineWorldPoints(pw):
+	""" Given multiple estimates of a point in the world, return the median position
+	"""
+
+	X = [];
+	n_estimates = len(pw);
+	n_points = len(pw[0]);
+	# per point, put all estimates in a vector and then make a final estimate:
+	for p in range(n_points):
+		Xests = np.array([0.0] * n_estimates);
+		Yests = np.array([0.0] * n_estimates);
+		Zests = np.array([0.0] * n_estimates);
+		for e in range(n_estimates):
+			Xests[e] = pw[e][p][0];
+			Yests[e] = pw[e][p][1];
+			Zests[e] = pw[e][p][2];
+		# take the median as the final estimate:
+		X.append(np.array([np.median(Xests), np.median(Yests), np.median(Zests)]));
+
+	return X;
 	
 def investigateResponseValues(image_name):
 	# extract keypoint features:
