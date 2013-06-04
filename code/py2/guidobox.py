@@ -524,8 +524,14 @@ def getFeaturesWithDistance(sample)
 	# Now we have all rotations and translations in the frame of camera 1, 
 	# and the world points. We now want to know the distances to the points
 	# in the final image:
+	distances = np.array([0.0]*n_world_points);	
+	for p in range(n_world_points):
+		distances[p] = np.linalg.norm(X[p] - Ts[-1]);
+
+	# distances with TTC estimates:
+	distances_TTC = TTC_estimates * speed;
 	
-	
+	return (distances, distances_TTC);
 		
 def transformMatricesToGenome(Rs, Ts, X):
 	""" Transforms lists of rotation matrices, translation vectors, and world points to a vector that can be used for optimization.

@@ -214,7 +214,7 @@ def testVisualOdometry(n_points=100):
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
 
-def calculateReprojectionError():
+def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 	"""	calculateReprojectionError takes a number of rotation and translation matrices, 
 			a matrix of world points, and the corresponding image coordinates of those points.
 
@@ -222,13 +222,31 @@ def calculateReprojectionError():
 			they are from the observed locations.	
 	"""
 
-	# project the world points in the cameras:
-	result = cv2.projectPoints(points_world, rvec1, np.array([0.0]*3), K, distCoeffs);	
-	image_points1 = result[0];
+	distCoeffs = np.zeros([4]); # no clue what this means
 
-	result = cv2.projectPoints(points_world, rvec2, t, K, distCoeffs);
-	image_points2 = result[0];
+	# per camera, project the world points into the image and calculate the error with respect to the measured image points:
+	total_error = 0;
+	for cam in range(n_cameras):
 
+		# The measured image points:
+		measured_image_points = IPs[cam];
+			
+		# project the world points in the cameras:
+		t = Ts[cam];
+		R = Rs[cam];
+		rvec = cv2.Rodrigues(R);
+		rvec = rvec[0];
+		result = cv2.projectPoints(X, rvec, t, K, distCoeffs);
+		image_points = result[0];
+
+		# calculate the error for this camera:
+		err = 0;
+		for ip in range(n_world_points):
+			err += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
+
+		total_error += err;
+
+	return total_error;
 
 def printRotationMatrix(R):
 
