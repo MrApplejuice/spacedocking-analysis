@@ -406,7 +406,7 @@ def getImagePoints(FTS, first_frame, second_frame):
 
 	return (image_points1, image_points2);
 	
-def getFeaturesWithDistance(sample)
+def getFeaturesWithDistance(sample):
 	""" Determines the distances to features that persist throughout the sequence.
 			It also returns the scale-TTC-based distances of these features.
 	"""
@@ -1030,6 +1030,35 @@ def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, 
 	#pl.figure();
 	#Plot.scatter(Y[:,0], Y[:,1], 20, orientations);
 	#pl.title('orientations');
+
+def evaluateDistances(test_dir="../data", data_name="output.txt", selectSubset=True):
+	""" Uses 3D reconstruction to estimate distances per point and compares these with scale-based estimates.
+	"""
+
+	# read the data from the database:
+	result = loadData(test_dir + "/" + data_name);
+	
+	if(selectSubset):
+		# select a number of random samples:
+		n_selected_samples = 10;
+		n_samples = len(result);
+		rand_inds = np.random.permutation(range(n_samples));
+		result = [result[i] for i in rand_inds[0:n_selected_samples].tolist()];
+		
+	# iterate over the data:
+	n_samples = len(result);
+	n_frames = size(result[0]['frames']);
+
+	D = []; D_TTC = [];
+	for sample in result:
+		# determine the distances to all features that persist through the entire sequence:
+		(distances, distances_TTC) = getFeaturesWithDistance(sample);
+		D.append(distances.tolist());
+		D_TTC.append(distances_TTC.tolist());
+		
+	# compare the distances:
+	pl.figure();
+	pl.plot(D, D_TTC, 'x');
 		
 def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True, storeKohonenHistograms=True, KohonenFile='Kohonen.txt'):
 	""" Plots simple statistics from the database such as where the photos were taken, etc.
