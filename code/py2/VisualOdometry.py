@@ -214,6 +214,22 @@ def testVisualOdometry(n_points=100):
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
 
+def calculateReprojectionError():
+	"""	calculateReprojectionError takes a number of rotation and translation matrices, 
+			a matrix of world points, and the corresponding image coordinates of those points.
+
+			It then projects the world points to the image planes and calculates how far off 
+			they are from the observed locations.	
+	"""
+
+	# project the world points in the cameras:
+	result = cv2.projectPoints(points_world, rvec1, np.array([0.0]*3), K, distCoeffs);	
+	image_points1 = result[0];
+
+	result = cv2.projectPoints(points_world, rvec2, t, K, distCoeffs);
+	image_points2 = result[0];
+
+
 def printRotationMatrix(R):
 
 	rows = R.shape[0];

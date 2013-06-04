@@ -44,12 +44,13 @@ def initializeFeatures(features, time_step):
 	# Copy the features into a struct used for matching:
 	FTS = [];
 	for f in range(n_features):
-		feature = {'sizes': [], 'descriptors': [], 'time_steps': [], 'n_not_observed': 0};
+		feature = {'sizes': [], 'descriptors': [], 'time_steps': [], 'n_not_observed': 0, 'x': [], 'y': []};
 		FTS.append(feature);
 		FTS[f]['sizes'].append( features[f]['size'] );
 		FTS[f]['time_steps'].append( time_step );
 		FTS[f]['descriptors'].append( features[f]['descriptor'] );
-	
+		FTS[f]['x'].append( features[f]['x'] );
+		FTS[f]['y'].append( features[f]['y'] );
 	return FTS;
 
 def addMatchedFeature(FT, feature, time_step):
@@ -57,20 +58,25 @@ def addMatchedFeature(FT, feature, time_step):
 	FT['sizes'].append(feature['size']);
 	FT['time_steps'].append(time_step);
 	FT['descriptors'].append(feature['descriptor']);
-	
-	
-# def getMatchedFeatures(sample):
-#
-# Given a sample from the database (consisting of 5 frames), matches features from one frame to the next.
-#
-# input:
-# - sample from the database 
-# - graphics: whether to show all kinds of plots
-#
-# output:
-# - TTC
-def getMatchedFeatures(sample, graphics=False):
+	FT['x'].append(feature['x']);
+	FT['y'].append(feature['y']);
 
+def getMatchedFeatures(sample, graphics=False):
+	"""	Given a sample from the database (consisting of 5 frames), matches features from one frame to the next.
+			
+			input:
+			- sample from the database 
+			- graphics: whether to show all kinds of plots
+
+			output:
+			- TimeToContact estimate at the last image
+			- n_features_used_for_estimate
+			- TTC_estimates of all the selected features in the last image
+			- FTS_USED: the features used for the estimate
+			- ALL_FTS: all features encountered in the images
+	"""
+
+	# whether to show graphics.
 	ttc_graphics = False;
 
 	# nearest neighbor threshold for matching:
@@ -80,7 +86,7 @@ def getMatchedFeatures(sample, graphics=False):
 	max_n_not_observed = 1;
 	
 	# minimum number of observations of a feature to be considered for the estimate:
-	min_memory = 4;
+	min_memory = 4; # 4 means that the features are present in all images
 	
 	# number of frames in a stored sequence:
 	n_frames = len(sample['frames']);
@@ -370,7 +376,107 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, w1, h1);
 
 	# show 3D reconstruction:
+
+def contains(L, element):
+	""" Determines whether a list contains a certain element.
+	"""
+	n_elements = len(L);
+
+	for el in range(n_elements):
+		if(L[el] == element):
+			return True;
 	
+	return False;
+
+def getImagePoints(FTS, first_frame, second_frame):
+	""" getImagePoints takes the features as determined by the matching, and two frames
+			It returns the image points of the features present in both these frames
+	"""	
+	
+	# make a list of features that have both time steps
+	selected_features = [FTS[ind] for ind in range(n_features) if (contains(FTS[ind]['time_steps'], first_frame) and contains(FTS[ind]['time_steps'], second_frame))];
+
+	# make a list of the corresponding image points in image 1 and 2:
+	n_features = len(selected_features);
+	image_points1 = [];
+	image_points2 = [];
+	for ft in range(n_features):
+		image_points1.append(np.array([selected_features[ft]['x'][first_frame], selected_features[ft]['y'][first_frame]]));
+		image_points1.append(np.array([selected_features[ft]['x'][second_frame], selected_features[ft]['y'][second_frame]]));
+
+	return (image_points1, image_points2);
+	
+def getFeaturesWithDistance(sample)
+	""" Determines the distances to features that persist throughout the sequence.
+			It also returns the scale-TTC-based distances of these features.
+	"""
+	
+	# 1) Get the features that persist throughout the sequence with corresponding TTC estimates (map these to distances with the help of the velocity)
+	# 2) Reconstruct from frame to frame the camera positions and attitudes, and world points, scaling them with the help of the drone velocity
+	# 3) Perform some kind of bundle adjustment
+	# 4) Determine a distance per feature in the last frame
+
+	# 1) Get the features that persist throughout the sequence with corresponding TTC estimates (map these to distances with the help of the velocity)
+	(TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED, ALL_FTS) = getMatchedFeatures(sample);
+
+	# check if there are enough features to go by.
+	# although with our implementation 8 is the absolute minimum, we require more points for reliability
+	n_features = len(FTS);
+	if(n_features < 20):
+		print 'Not enough features for state reconstruction';
+		distsReconstruction = []; distsTTC = [];
+		return (distsReconstruction, distsTTC);
+
+	# 2) Reconstruct from frame to frame the camera positions and attitudes, and world points, scaling them with the help of the drone velocity
+	
+	# number of frames in a stored sequence:
+	n_frames = len(sample['frames']);
+
+	# width and height of the image, should be determined with sample:
+	W = 640; H = 480;
+
+	# get dummy camera calibration matrix:
+	K = getK(W, H);
+
+	# reconstruct the camera movement and world points from frame to frame:
+	points_world = [];
+	Rotations = [];
+	Translations = [];
+	vx = np.array([0.0] * (n_frames-1));
+	vy = np.array([0.0] * (n_frames-1));
+	vz = np.array([0.0] * (n_frames-1));
+
+	# get all frame-to-frame reconstructions:
+	for fr in range(n_frames-1):
+		
+		# get the relevant image points:
+		(image_points1, image_points2) = getImagePoints(FTS_USED, fr, fr+1);
+		
+		# 3D reconstruction without scale:
+		(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, W, H);
+
+		# determine the scale on the basis of the velocity:
+		vx[fr] = sample['frames'][fr]['velocities'][vx_index];
+		vy[fr] = sample['frames'][fr]['velocities'][vy_index];
+		vz[fr] = sample['frames'][fr]['velocities'][vz_index];
+		speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
+		scale = snapshot_time_interval * speed;
+
+		# append rotation:
+		Rotations.append(R);
+		# scale the translation and world points, but don't rotate them yet.
+		Translations.append(scale * t);
+		points_world.append(scale * X);
+
+	# 3) Perform some kind of bundle adjustment
+	
+	# First we need to transform the translations, rotations, and world points
+	# to a common frame of reference, that of the first camera view.
+	
+
+		
+		
+
 	
 def investigateResponseValues(image_name):
 	# extract keypoint features:
