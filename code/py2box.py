@@ -10,7 +10,8 @@ sys.path.insert(0, './py2/')
 
 from readdata import *
 
-importedBox = True
+importedBox = False
+
 if len(sys.argv) > 1:
    if sys.argv[1].lower() == 'pkg':
      from pkgbox import *

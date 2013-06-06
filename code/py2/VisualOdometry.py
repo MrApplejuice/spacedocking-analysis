@@ -1,14 +1,25 @@
 import pdb
 import cv2
 import numpy as np
+import matplotlib as mpl
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as pl
 
-def performStructureFromMotion(image_points1, image_points2, K, WIDTH, HEIGHT):
+def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	""" Performs structure from motion on the basis of image matches (image_points1, image_points2, both Nx2),
 			a calibration matrix K, and a given width and height of an image. 
 			
 			It returns (R, t, X), i.e., a rotation matrix R, translation t, and world points X.
 	"""
 	
+	pdb.set_trace();
+
+	# location camera 1:
+	l1 = np.zeros([3,1]);
+	R1 = np.eye(3);
+	rvec1 = cv2.Rodrigues(R1);
+	rvec1 = rvec1[0];
+
 	# determine the rotation and translation between the two views:
 	(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
 
@@ -64,6 +75,8 @@ def getK(W=640.0, H=480.0):
 	K[1,1] = H;
 	K[2,2] = 1.0;
 
+	return K;
+
 def testVisualOdometry(n_points=100):
 
 	# location camera 1:
@@ -116,8 +129,8 @@ def testVisualOdometry(n_points=100):
 	rvec2 = rvec2[0];
 
 	# create X, Y, Z points:
-	size = 8;
-	distance = 8;
+	size = 4;
+	distance = 10;
 	transl = np.zeros([1,3]);
 	transl[0,2] = distance;
 	points_world = np.zeros([n_points, 3]);
@@ -206,13 +219,41 @@ def testVisualOdometry(n_points=100):
 	print 't_est = %f, %f, %f' % (t2_est[0], t2_est[1], t2_est[2]);
 	print 'R = '
 	printRotationMatrix(R2_est);
-	print 'Scale = %f, Mean scale = %f' % (scale, np.mean(scales));
+	sc = np.mean(scales);
+	print 'Scale = %f, Mean scale = %f' % (scale, sc);
 
 	# scale:
 	X_est = X_est * scale;	
 
+	# show visually:
+
+	fig = pl.figure()
+	ax = fig.gca(projection='3d')
+	M_world = np.matrix(points_world);
+	M_est = np.matrix(X_est);
+
+	x = np.array(M_world[:,0]); y = np.array(M_world[:,1]); z = M_world[:,2];
+	x = flatten(x); y = flatten(y); z = flatten(z);
+	ax.scatter(x, y, z, 'x', color=(0,0,0));
+
+	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = M_est[:,2];
+	x = flatten(x); y = flatten(y); z = flatten(z);
+	ax.scatter(x, y, z, '*', color=(1.0,0,0));
+
+	x = (1.0/sc)*np.array(M_est[:,0]); y = (1.0/sc)*np.array(M_est[:,1]); z = (1.0/sc)*M_est[:,2];
+	x = flatten(x); y = flatten(y); z = flatten(z);
+	ax.scatter(x, y, z, 's', color=(0,0,1.0));
+
+
+	ax.axis('tight');
+	pl.show();
+
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
+
+def flatten(X):
+	Y = [x[0] for x in X];
+	return Y;
 
 def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 	"""	calculateReprojectionError takes a number of rotation and translation matrices, 
@@ -537,6 +578,10 @@ def wrongSolution(R1, R2):
 #http://stackoverflow.com/questions/3678317/t-and-r-estimation-from-essential-matrix
 #http://stackoverflow.com/questions/10187582/opencv-python-fundamental-and-essential-matrix-do-not-agree
 
+
+
+# introduction to matplotlib:
+# http://nbviewer.ipython.org/urls/raw.github.com/jrjohansson/scientific-python-lectures/master/Lecture-4-Matplotlib.ipynb
 
 #	# p2 = points2.tolist();
 #	p2 = points2;

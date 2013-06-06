@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+
 # low-dimensional representation with t-sne:
 import sys
 sys.path.insert(0, './py2/tsne_python/')
 sys.path.insert(0, './py2/calc_tsne/')
-from tsne import *
-from calc_tsne import *
+#from tsne import *
+#from calc_tsne import *
 import scipy.io
 
 from readdata import *
@@ -19,6 +20,9 @@ from matplotlib.transforms import Affine2D
 from mpl_toolkits.axes_grid import AxesGrid
 from VisualOdometry import *
 import pylab as Plot
+import matplotlib as mpl
+from mpl_toolkits.mplot3d import Axes3D
+
 
 # size(result) -> total number of samples
 # size(result[i]['frames']) == 5
@@ -357,7 +361,7 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 			points1.append(np.array([x1, y1]));
 			x2 = keypoints2[sindices[0]].pt[0];
 			y2 = keypoints2[sindices[0]].pt[1];
-			points1.append(np.array([x2, y2]));
+			points2.append(np.array([x2, y2]));
 			#cv2.circle(img1, (int(x1), int(y1)), 4, (0.0,255.0,0.0), -1)
 			#cv2.circle(img2, (int(x2), int(y2)), 4, (0.0,255.0,0.0), -1)
 			cv2.line(vis, (int(x1), int(y1)), (int(x2+w1), int(y2)), (0.0, 255.0, 0.0), 1)
@@ -373,9 +377,18 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	K = getK(w1, h1);
 
 	# 3D reconstruction:
-	(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, w1, h1);
+	(R, t, X) = performStructureFromMotion(np.array(points1), np.array(points2), K, w1, h1);
 
 	# show 3D reconstruction:
+	fig = pl.figure()
+	ax = fig.gca(projection='3d')
+	M_est = np.matrix(X);
+	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = M_est[:,2];
+	x = flatten(x); y = flatten(y); z = flatten(z);
+	ax.scatter(x, y, z, '*', color=(1.0,0,0));
+	pl.show();
+
+
 
 def contains(L, element):
 	""" Determines whether a list contains a certain element.
