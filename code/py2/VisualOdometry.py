@@ -11,8 +11,6 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 			
 			It returns (R, t, X), i.e., a rotation matrix R, translation t, and world points X.
 	"""
-	
-	pdb.set_trace();
 
 	# location camera 1:
 	l1 = np.zeros([3,1]);
@@ -87,8 +85,8 @@ def testVisualOdometry(n_points=100):
 
 	# translation vector
 	t = np.zeros([3,1]);#np.random.rand(3,1);
-	t[2] = 1;
-	t[1] = 0;
+	t[2] = 0;
+	t[1] = 1;
 	print 't = %f, %f, %f' % (t[0], t[1], t[2]);
 	scale = np.linalg.norm(t);
 	print 'scale = %f' % scale;
@@ -220,7 +218,7 @@ def testVisualOdometry(n_points=100):
 	print 'R = '
 	printRotationMatrix(R2_est);
 	sc = np.mean(scales);
-	print 'Scale = %f, Mean scale = %f' % (scale, sc);
+	print 'Scale = %f, Mean scale = %f' % (scale, 1.0/sc);
 
 	# scale:
 	X_est = X_est * scale;	
@@ -231,22 +229,28 @@ def testVisualOdometry(n_points=100):
 	ax = fig.gca(projection='3d')
 	M_world = np.matrix(points_world);
 	M_est = np.matrix(X_est);
+	M_est = M_est[:,:3];
 
-	x = np.array(M_world[:,0]); y = np.array(M_world[:,1]); z = M_world[:,2];
-	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, 'x', color=(0,0,0));
-
-	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = M_est[:,2];
+	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = np.array(M_est[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
 	ax.scatter(x, y, z, '*', color=(1.0,0,0));
 
-	x = (1.0/sc)*np.array(M_est[:,0]); y = (1.0/sc)*np.array(M_est[:,1]); z = (1.0/sc)*M_est[:,2];
+
+	fig.hold = True;
+
+	x = (1.0/sc)*np.array(M_est[:,0]); y = (1.0/sc)*np.array(M_est[:,1]); z = (1.0/sc)*np.array(M_est[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
 	ax.scatter(x, y, z, 's', color=(0,0,1.0));
 
+	x = np.array(M_world[:,0]); y = np.array(M_world[:,1]); z = np.array(M_world[:,2]);
+	x = flatten(x); y = flatten(y); z = flatten(z);
+	ax.scatter(x, y, z, 'o', color=(0.0,0.0,0.0));
 
 	ax.axis('tight');
 	pl.show();
+
+	# if(1.0/sc > 0.99 * scale and 1.0/sc < 1.01 * scale):
+	#	pdb.set_trace()
 
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
@@ -412,10 +416,19 @@ def determineTransformation(points1, points2, K, W, H):
 		x2 = transformPointsSFM(points2);
 		F = compute_fundamental_normalized(x1,x2);
 
+	# make F rank 2:
+	print 'F determinant: %f' % (np.linalg.det(F))
+	(UF, SigmaF, VTF) = np.linalg.svd(F);
+	D = np.zeros([3,3]);
+	D[0,0] = SigmaF[0];
+	D[1,1] = SigmaF[1];
+	F = np.dot(UF, np.dot( D , VTF ) );
+	print 'F determinant: %f' % (np.linalg.det(F))	
 	
 	if(DEBUG):
 		print 'F = '
 		printRotationMatrix(F);
+		print 'F determinant: %f' % (np.linalg.det(F))
 	
 	# extract essential matrix:
 	E = np.dot(K.transpose(), np.dot(F, K));

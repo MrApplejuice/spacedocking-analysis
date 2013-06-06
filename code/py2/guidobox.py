@@ -383,7 +383,7 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	fig = pl.figure()
 	ax = fig.gca(projection='3d')
 	M_est = np.matrix(X);
-	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = M_est[:,2];
+	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = np.array(M_est[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
 	ax.scatter(x, y, z, '*', color=(1.0,0,0));
 	pl.show();
