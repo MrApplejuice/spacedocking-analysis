@@ -40,7 +40,6 @@ class reconstructionProblem(base):
 		# What if points are behind the cameras?
 		err = VO.calculateReprojectionError(Rs, Ts, X, self.IPs, self.n_cameras, self.n_world_points, self.K);
 
-		print 'err = %f' % err
 		# return the fitness:
 		return [float(err)];
 			

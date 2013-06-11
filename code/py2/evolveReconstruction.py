@@ -15,7 +15,7 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	prob.ub = [1.0] * n_genes;
 
 	# evolutions, generations and individuals
-	n_evolutions = 100;
+	n_evolutions = 3;
 	n_generations = 1;
 	n_individuals = 50;
 
@@ -49,9 +49,11 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	#algo_list.append(algorithm.pso_gen(gen = n_generations, variant=6, neighb_type=3))
 	#algo_list.append(algorithm.pso_gen(gen = n_generations, variant=6, neighb_type=4))
 	
+	algo_list.append(algorithm.scipy_tnc(maxfun=150));
+
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0, m = 0.05))
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.05))
-	algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.01))
+	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.01))
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.1, m = 0.03))
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.5, m = 0.5))
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.005, m = 0.001))

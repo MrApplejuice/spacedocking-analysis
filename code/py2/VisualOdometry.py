@@ -211,7 +211,10 @@ def testVisualOdometry(n_points=100):
 	# triangulate the image points to obtain world coordinates:
 	X_est = triangulate(ip1, ip2, P1, P2_est);
 
-	# bundle adjustment:
+	# We could determine the reprojection error already here. It is close to 0 for a good estimate
+	# and in the 10,000s for a bad estimate.
+
+	# BUNDLE ADJUSTMENT:
 
 	# evolve a solution:
 	IPs = [];
@@ -235,7 +238,7 @@ def testVisualOdometry(n_points=100):
 	genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
 	
 	# Get rotations, translations, X_est
-	(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);	
+	(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);
 	R2_est = Rs[1];
 	t2_est = Ts[1];
 
@@ -317,7 +320,7 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 		for ip in range(n_world_points):
 			err += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
 
-		print 'Total error: %f' % total_error;
+		# print 'Total error: %f' % total_error;
 		total_error += err;
 
 	return total_error;
