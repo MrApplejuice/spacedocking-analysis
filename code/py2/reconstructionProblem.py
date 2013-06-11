@@ -33,15 +33,6 @@ class reconstructionProblem(base):
 
 	def _objfun_impl(self,genome):
 
-		# the image points are necessary for the fitness evaluation:
-		# params = np.loadtxt('params.dat');
-		# n_cameras = params[0];
-		# n_world_points = params[1];
-		# IPs1 = np.loadtxt('IPs1.dat');
-		# IPs2 = np.loadtxt('IPs2.dat');
-		# IPs = IPs1.append(IPs2[-1]);
-		# K = np.loadtxt('K.dat');
-		
 		# get the rotations, translations, and world points from the genome
 		(Rs, Ts, X) = self.transformGenomeToMatrices(genome, self.n_cameras, self.n_world_points);
 
@@ -49,6 +40,7 @@ class reconstructionProblem(base):
 		# What if points are behind the cameras?
 		err = VO.calculateReprojectionError(Rs, Ts, X, self.IPs, self.n_cameras, self.n_world_points, self.K);
 
+		print 'err = %f' % err
 		# return the fitness:
 		return [float(err)];
 			

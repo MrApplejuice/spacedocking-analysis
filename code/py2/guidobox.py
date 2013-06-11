@@ -377,6 +377,7 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	K = getK(w1, h1);
 
 	# 3D reconstruction:
+	# we should subtract (W/2, H/2) from the image points!
 	(R, t, X) = performStructureFromMotion(np.array(points1), np.array(points2), K, w1, h1);
 
 	# show 3D reconstruction:
