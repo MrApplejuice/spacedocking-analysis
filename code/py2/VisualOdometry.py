@@ -60,6 +60,41 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	# triangulate the image points to obtain world coordinates:
 	X_est = triangulate(ip1, ip2, P1, P2_est);
 
+	# BUNDLE ADJUSTMENT:
+
+	# evolve a solution:
+	IPs = [];
+	IPs.append(image_points1);
+	IPs.append(image_points2);
+	# seed the evolution with some pre-knowledge:
+	phis = [0.0];
+	thetas = [0.0];
+	psis = [0.0];
+	#Ts = [t];
+	t2e = np.zeros([3,1]);
+	for i in range(3):
+		t2e[i,0] = t2_est[i];
+	Ts = [t2e];
+	# points;
+	W = np.zeros([n_points, 3]);
+	for p in range(n_points):
+		for i in range(3):
+			W[p, i] = X_est[p][i];
+
+	# calculate reprojection error before further optimization:
+	Rs = [R1]; Rs.append(R2_est);
+	Ts = [l1]; Ts.append(t2e);
+	err = calculateReprojectionError(Rs, Ts, W, IPs, 2, n_points, K);
+
+	# determine the genome on the above information:
+	genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
+	
+	# Get rotations, translations, X_est:
+	(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);
+	R2_est = Rs[1];
+	t2_est = Ts[1];
+
+
 	print 't_est = %f, %f, %f' % (t2_est[0], t2_est[1], t2_est[2]);
 	print 'R = '
 	printRotationMatrix(R2_est);	
@@ -205,6 +240,8 @@ def testVisualOdometry(n_points=100):
 				index_t = it;
 				print 'ir, it = %d, %d' % (ir, it)
 
+	R2s[index_r] = cleanUpR(R2s[index_r]);
+
 	P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
 	R2_est = R2s[index_r]; t2_est = t2s[index_t];
 
@@ -215,32 +252,34 @@ def testVisualOdometry(n_points=100):
 	# and in the 10,000s for a bad estimate.
 
 	# BUNDLE ADJUSTMENT:
+	bundle_adjustment = False;
 
-	# evolve a solution:
-	IPs = [];
-	IPs.append(image_points1);
-	IPs.append(image_points2);
-	# seed the evolution with some pre-knowledge:
-	phis = [phi];
-	thetas = [theta];
-	psis = [psi];
-	#Ts = [t];
-	t2e = np.zeros([3,1]);
-	for i in range(3):
-		t2e[i,0] = t2_est[i];
-	Ts = [t2e];
-	# points;
-	W = np.zeros([n_points, 3]);
-	for p in range(n_points):
+	if(bundle_adjustment):
+		# evolve a solution:
+		IPs = [];
+		IPs.append(image_points1);
+		IPs.append(image_points2);
+		# seed the evolution with some pre-knowledge:
+		phis = [phi];
+		thetas = [theta];
+		psis = [psi];
+		#Ts = [t];
+		t2e = np.zeros([3,1]);
 		for i in range(3):
-			W[p, i] = X_est[p][i];
+			t2e[i,0] = t2_est[i];
+		Ts = [t2e];
+		# points;
+		W = np.zeros([n_points, 3]);
+		for p in range(n_points):
+			for i in range(3):
+				W[p, i] = X_est[p][i];
 
-	genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
+		genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
 	
-	# Get rotations, translations, X_est
-	(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);
-	R2_est = Rs[1];
-	t2_est = Ts[1];
+		# Get rotations, translations, X_est
+		(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);
+		R2_est = Rs[1];
+		t2_est = Ts[1];
 
 	scales = np.array([0.0] * n_points);
 	for i in range(n_points):
@@ -285,6 +324,14 @@ def testVisualOdometry(n_points=100):
 
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
+
+def cleanUpR(R):
+	for i in range(3):
+		if(R[i,i] < 0):
+			for c in range(3):
+				R[i,c] = -R[i,c];
+	
+	return R;
 
 def flatten(X):
 	Y = [x[0] for x in X];
