@@ -13,6 +13,8 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 			It returns (R, t, X), i.e., a rotation matrix R, translation t, and world points X.
 	"""
 
+	n_points = len(image_points1);
+
 	# location camera 1:
 	l1 = np.zeros([3,1]);
 	R1 = np.eye(3);
@@ -46,6 +48,10 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	# reproject the points into the 3D-world:
 	index_r = 0; index_t = 0;
 	for ir in range(2):
+
+		# clean up the rotation matrix, i.e., don't allow mirroring of any axis:
+		R2s[ir] = cleanUpR(R2s[ir]);
+
 		for it in range(2):
 			point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
 
@@ -61,38 +67,39 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	X_est = triangulate(ip1, ip2, P1, P2_est);
 
 	# BUNDLE ADJUSTMENT:
-
-	# evolve a solution:
-	IPs = [];
-	IPs.append(image_points1);
-	IPs.append(image_points2);
-	# seed the evolution with some pre-knowledge:
-	phis = [0.0];
-	thetas = [0.0];
-	psis = [0.0];
-	#Ts = [t];
-	t2e = np.zeros([3,1]);
-	for i in range(3):
-		t2e[i,0] = t2_est[i];
-	Ts = [t2e];
-	# points;
-	W = np.zeros([n_points, 3]);
-	for p in range(n_points):
+	bundle_adjustment = False;
+	if(bundle_adjustment):
+		# evolve a solution:
+		IPs = [];
+		IPs.append(image_points1);
+		IPs.append(image_points2);
+		# seed the evolution with some pre-knowledge:
+		phis = [0.0];
+		thetas = [0.0];
+		psis = [0.0];
+		#Ts = [t];
+		t2e = np.zeros([3,1]);
 		for i in range(3):
-			W[p, i] = X_est[p][i];
+			t2e[i,0] = t2_est[i];
+		Ts = [t2e];
+		# points;
+		W = np.zeros([n_points, 3]);
+		for p in range(n_points):
+			for i in range(3):
+				W[p, i] = X_est[p][i];
 
-	# calculate reprojection error before further optimization:
-	Rs = [R1]; Rs.append(R2_est);
-	Ts = [l1]; Ts.append(t2e);
-	err = calculateReprojectionError(Rs, Ts, W, IPs, 2, n_points, K);
+		# calculate reprojection error before further optimization:
+		Rs = [R1]; Rs.append(R2_est);
+		Ts = [l1]; Ts.append(t2e);
+		err = calculateReprojectionError(Rs, Ts, W, IPs, 2, n_points, K);
 
-	# determine the genome on the above information:
-	genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
+		# determine the genome on the above information:
+		genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
 	
-	# Get rotations, translations, X_est:
-	(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);
-	R2_est = Rs[1];
-	t2_est = Ts[1];
+		# Get rotations, translations, X_est:
+		(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);
+		R2_est = Rs[1];
+		t2_est = Ts[1];
 
 
 	print 't_est = %f, %f, %f' % (t2_est[0], t2_est[1], t2_est[2]);
@@ -232,6 +239,7 @@ def testVisualOdometry(n_points=100):
 	# reproject the points into the 3D-world:
 	index_r = 0; index_t = 0;
 	for ir in range(2):
+		# clean up the rotation matrix, i.e., don't allow mirroring of any axis:
 		R2s[ir] = cleanUpR(R2s[ir]);
 		for it in range(2):
 			point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
