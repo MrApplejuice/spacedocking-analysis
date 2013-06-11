@@ -232,6 +232,7 @@ def testVisualOdometry(n_points=100):
 	# reproject the points into the 3D-world:
 	index_r = 0; index_t = 0;
 	for ir in range(2):
+		R2s[ir] = cleanUpR(R2s[ir]);
 		for it in range(2):
 			point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
 
@@ -240,7 +241,7 @@ def testVisualOdometry(n_points=100):
 				index_t = it;
 				print 'ir, it = %d, %d' % (ir, it)
 
-	R2s[index_r] = cleanUpR(R2s[index_r]);
+	
 
 	P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
 	R2_est = R2s[index_r]; t2_est = t2s[index_t];
