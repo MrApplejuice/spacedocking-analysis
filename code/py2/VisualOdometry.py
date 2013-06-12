@@ -91,7 +91,7 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 		# calculate reprojection error before further optimization:
 		Rs = [R1]; Rs.append(R2_est);
 		Ts = [l1]; Ts.append(t2e);
-		err = calculateReprojectionError(Rs, Ts, W, IPs, 2, n_points, K);
+		(err, errors_per_point) = calculateReprojectionError(Rs, Ts, W, IPs, 2, n_points, K);
 
 		# determine the genome on the above information:
 		genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
@@ -195,6 +195,14 @@ def testVisualOdometry(n_points=100):
 	result = cv2.projectPoints(points_world, rvec2, t, K, distCoeffs);
 	image_points2 = result[0];
 
+	add_noise = True;
+	if(add_noise):
+		for p in range(n_points):
+			image_points1[p][0][0] += np.random.normal(0.0, 0.5);
+			image_points1[p][0][1] += np.random.normal(0.0, 0.5);			
+			image_points2[p][0][0] += np.random.normal(0.0, 0.5);
+			image_points2[p][0][1] += np.random.normal(0.0, 0.5);			
+
 
 	# determine the rotation and translation between the two views:
 	(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
@@ -261,7 +269,7 @@ def testVisualOdometry(n_points=100):
 	# and in the 10,000s for a bad estimate.
 
 	# BUNDLE ADJUSTMENT:
-	bundle_adjustment = False;
+	bundle_adjustment = True;
 
 	if(bundle_adjustment):
 		# evolve a solution:
@@ -305,6 +313,11 @@ def testVisualOdometry(n_points=100):
 
 	# show visually:
 
+	# calculate reprojection error:
+	Rs = [R1]; Rs.append(R2_est);
+	Ts = [l1]; Ts.append(t2_est);
+	(err, errors_per_point) = calculateReprojectionError(Rs, Ts, W, IPs, 2, n_points, K);
+
 	fig = pl.figure()
 	ax = fig.gca(projection='3d')
 	M_world = np.matrix(points_world);
@@ -313,17 +326,18 @@ def testVisualOdometry(n_points=100):
 
 	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = np.array(M_est[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, '*', color=(1.0,0,0));
-
+	#ax.scatter(x, y, z, '*', color=(1.0,0,0));
+	cm = pl.cm.get_cmap('hot')
+	ax.scatter(x, y, z, '*', c=errors_per_point, cmap=cm);
 	fig.hold = True;
 
-	x = (1.0/sc)*np.array(M_est[:,0]); y = (1.0/sc)*np.array(M_est[:,1]); z = (1.0/sc)*np.array(M_est[:,2]);
-	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, 's', color=(0,0,1.0));
+	#x = (1.0/sc)*np.array(M_est[:,0]); y = (1.0/sc)*np.array(M_est[:,1]); z = (1.0/sc)*np.array(M_est[:,2]);
+	#x = flatten(x); y = flatten(y); z = flatten(z);
+	#ax.scatter(x, y, z, 's', color=(0,0,1.0));
 
 	x = np.array(M_world[:,0]); y = np.array(M_world[:,1]); z = np.array(M_world[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, 'o', color=(0.0,0.0,0.0));
+	ax.scatter(x, y, z, 'o', color=(0.0,1.0,0.0));
 
 	ax.axis('tight');
 	pl.show();
@@ -333,6 +347,30 @@ def testVisualOdometry(n_points=100):
 
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
+
+def getTriangulatedPoints(image_points1, image_points2, R2, t2, K):
+
+	""" Get the triangulated world points on the basis of corresponding image points and 
+			a rotation matrix, displacement vector and calibration matrix.
+	"""
+
+	# 3D-reconstruction:
+	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
+	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
+
+	# P1 is at the origin
+	P1 = np.zeros([3, 4]);
+	P1[:3,:3] = np.eye(3);
+	P1 = np.dot(K, P1);
+
+	# P2 is the displaced camera:
+	P2_est = getProjectionMatrix(R2, t2, K);
+
+	# reconstruct the points:
+	X_est = triangulate(ip1, ip2, P1, P2_est);
+
+	return X_est;
+
 
 def cleanUpR(R):
 	for i in range(3):
@@ -346,6 +384,34 @@ def flatten(X):
 	Y = [x[0] for x in X];
 	return Y;
 
+def getRotationMatrix(phi, theta, psi):
+		""" Create rotation matrix R on the basis of phi, theta, psi 
+		"""
+		R_phi = np.zeros([3,3]);
+		R_phi[0,0] = 1;
+		R_phi[1,1] = np.cos(phi);
+		R_phi[1,2] = np.sin(phi);
+		R_phi[2,1] = -np.sin(phi);
+		R_phi[2,2] = np.cos(phi);
+
+		R_theta = np.zeros([3,3]);
+		R_theta[1,1] = 1;
+		R_theta[0,0] = np.cos(theta);
+		R_theta[2,0] = -np.sin(theta);
+		R_theta[0,2] = np.sin(theta);
+		R_theta[2,2] = np.cos(theta);
+
+		R_psi = np.zeros([3,3]);
+		R_psi[0,0] = np.cos(psi);
+		R_psi[0,1] = np.sin(psi);
+		R_psi[1,0] = -np.sin(psi);
+		R_psi[1,1] = np.cos(psi);
+		R_psi[2,2] = 1;
+
+		R = np.dot(R_psi, np.dot(R_theta, R_phi));
+
+		return R;
+
 def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 	"""	calculateReprojectionError takes a number of rotation and translation matrices, 
 			a matrix of world points, and the corresponding image coordinates of those points.
@@ -358,6 +424,8 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 
 	# per camera, project the world points into the image and calculate the error with respect to the measured image points:
 	total_error = 0;
+	error_per_point = np.array([0.0]*n_world_points);
+
 	for cam in range(n_cameras):
 
 		# The measured image points:
@@ -374,12 +442,13 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 		# calculate the error for this camera:
 		err = 0;
 		for ip in range(n_world_points):
-			err += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
+			error_per_point[ip] += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
+			err += error_per_point[ip];
 
 		# print 'Total error: %f' % total_error;
 		total_error += err;
 
-	return total_error;
+	return (total_error, error_per_point);
 
 def printRotationMatrix(R):
 

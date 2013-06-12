@@ -15,9 +15,9 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	prob.ub = [1.0] * n_genes;
 
 	# evolutions, generations and individuals
-	n_evolutions = 3;
+	n_evolutions = 1;
 	n_generations = 1;
-	n_individuals = 50;
+	n_individuals = 1;
 
 	if(len(x) == 0):
 		# prior on camera matrices and points:
@@ -52,8 +52,8 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	algo_list.append(algorithm.scipy_tnc(maxfun=150));
 
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0, m = 0.05))
-	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.05))
-	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.01))
+	# algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.05))
+	# algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.01))
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.1, m = 0.03))
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.5, m = 0.5))
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.005, m = 0.001))

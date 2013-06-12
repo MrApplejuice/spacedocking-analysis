@@ -386,7 +386,8 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	M_est = np.matrix(X);
 	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = np.array(M_est[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, '*', color=(1.0,0,0));
+	cm = pl.cm.get_cmap('hot')
+	ax.scatter(x, y, z, '*', c=errors_per_point, cmap=cm);
 	pl.show();
 
 
@@ -430,6 +431,9 @@ def getFeaturesWithDistance(sample):
 	# 3) Perform some kind of bundle adjustment
 	# 4) Determine a distance per feature in the last frame
 
+	# if True, the translation and rotation are used and step 2 above skipped:
+	use_drone_info = True;
+
 	# 1) Get the features that persist throughout the sequence with corresponding TTC estimates (map these to distances with the help of the velocity)
 	(TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED, ALL_FTS) = getMatchedFeatures(sample);
 
@@ -447,6 +451,7 @@ def getFeaturesWithDistance(sample):
 	n_frames = len(sample['frames']);
 
 	# width and height of the image, should be determined with sample:
+	pdb.set_trace();
 	W = 640; H = 480;
 
 	# get dummy camera calibration matrix:
@@ -461,6 +466,13 @@ def getFeaturesWithDistance(sample):
 	vz = np.array([0.0] * (n_frames-1));
 	IPs1 = [];
 	IPs2 = [];
+
+	# get state info:
+	for fr in range(n_frames):
+		roll[fr] = sample['frames'][fr]['euler_angles'][roll_index];
+		yaw[fr] = sample['frames'][fr]['euler_angles'][yaw_index];
+		pitch[fr] = sample['frames'][fr]['euler_angles'][pitch_index];
+
 	# get all frame-to-frame reconstructions:
 	for fr in range(n_frames-1):
 		
@@ -471,21 +483,45 @@ def getFeaturesWithDistance(sample):
 		IPs1.append(image_points1);
 		IPs2.append(image_points2);
 
-		# 3D reconstruction without scale:
-		(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, W, H);
+		if(use_drone_info):
+			# take care of deltas > 2pi
+			delta_phi = np.deg2rad(roll[fr+1] - roll[fr]);
+			delta_theta = np.deg2rad(pitch[fr+1] - pitch[fr]);
+			delta_psi = np.deg2rad(yaw[fr+1] - yaw[fr]);
+			R = getRotationMatrix(delta_phi, delta_theta, delta_psi);
+			vx[fr] = sample['frames'][fr]['velocities'][vx_index];
+			vy[fr] = sample['frames'][fr]['velocities'][vy_index];
+			vz[fr] = sample['frames'][fr]['velocities'][vz_index];
+			t = np.zeros([3,1]);
+			t[0] = vx[fr];
+			t[1] = vy[fr];
+			t[2] = vz[fr];
+			t = t * snapshot_time_interval;
+			# it is questionable that X is really 
+			X = getTriangulatedPoints(image_points1, image_points2, R, t, K);
 
-		# determine the scale on the basis of the velocity:
-		vx[fr] = sample['frames'][fr]['velocities'][vx_index];
-		vy[fr] = sample['frames'][fr]['velocities'][vy_index];
-		vz[fr] = sample['frames'][fr]['velocities'][vz_index];
-		speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
-		scale = snapshot_time_interval * speed;
+			# append rotation:
+			Rotations.append(R);
+			# scale the translation and world points, but don't rotate them yet.
+			Translations.append(t);
+			points_world.append(X);
 
-		# append rotation:
-		Rotations.append(R);
-		# scale the translation and world points, but don't rotate them yet.
-		Translations.append(scale * t);
-		points_world.append(scale * X);
+		else:
+			# 3D reconstruction without scale:
+			(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, W, H);
+
+			# determine the scale on the basis of the velocity:
+			vx[fr] = sample['frames'][fr]['velocities'][vx_index];
+			vy[fr] = sample['frames'][fr]['velocities'][vy_index];
+			vz[fr] = sample['frames'][fr]['velocities'][vz_index];
+			speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
+			scale = snapshot_time_interval * speed;
+
+			# append rotation:
+			Rotations.append(R);
+			# scale the translation and world points, but don't rotate them yet.
+			Translations.append(scale * t);
+			points_world.append(scale * X);
 
 	# 3) Perform some kind of bundle adjustment
 	
