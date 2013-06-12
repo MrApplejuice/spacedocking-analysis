@@ -111,11 +111,41 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 
 def getK(W=640.0, H=480.0):
 	""" Constructs a standard calibration matrix given a width and height in pixels. """
+
 	K = np.zeros([3,3]);
 	K[0,0] = W;
+	K[0,2] = W / 2.0;
 	K[1,1] = H;
+	K[1,2] = H / 2.0;
 	K[2,2] = 1.0;
 
+	return K;
+
+def getKdrone1():
+	""" Calibration matrix of drone 1 """
+	#AR Drone 1: 320x240  (4:3 aspect ratio)
+	K = np.zeros([3,3]);
+	K[0,0] = 320.0;
+	K[0,1] = 0.0;
+	K[0,2] = 160.0;
+	K[1,0] = 0.0;
+	K[1,1] = 320.0;
+	K[1,2] = 120.0;
+	K[2,2] = 1.0;
+	return K;
+	
+def getKdrone2():
+	""" Calibration matrix of drone 2 from cvdrone """
+	#AR Drone 2: 640x360  (16:9 aspect ratio)
+
+	K = np.zeros([3,3]);
+	K[0,0] = 5.81399719e+002;
+	K[0,1] = 0.0;
+	K[0,2] = 3.17410492e+002;
+	K[1,0] = 0.0;
+	K[1,1] = 5.78456116e+002;
+	K[1,2] = 1.37808365e+002;
+	K[2,2] = 1.0;
 	return K;
 
 def testVisualOdometry(n_points=100):
