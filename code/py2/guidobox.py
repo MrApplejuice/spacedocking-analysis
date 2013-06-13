@@ -51,7 +51,7 @@ def initializeFeatures(features, time_step):
 		feature = {'sizes': [], 'descriptors': [], 'time_steps': [], 'n_not_observed': 0, 'x': [], 'y': []};
 		FTS.append(feature);
 		FTS[f]['sizes'].append( features[f]['size'] );
-		FTS[f]['time_steps'].append( time_step );
+		FTS[f]['time_steps'].append( time_step ); # goes from 1 to 4???
 		FTS[f]['descriptors'].append( features[f]['descriptor'] );
 		FTS[f]['x'].append( features[f]['x'] );
 		FTS[f]['y'].append( features[f]['y'] );
@@ -81,7 +81,7 @@ def getMatchedFeatures(sample, graphics=False):
 	"""
 
 	# whether to show graphics.
-	ttc_graphics = False;
+	ttc_graphics = True;
 
 	# nearest neighbor threshold for matching:
 	NN_THRESHOLD = 0.75;
@@ -90,7 +90,7 @@ def getMatchedFeatures(sample, graphics=False):
 	max_n_not_observed = 1;
 	
 	# minimum number of observations of a feature to be considered for the estimate:
-	min_memory = 4; # 4 means that the features are present in all images
+	min_memory = 4; # 4 means that the features are present in all images: is that true?
 	
 	# number of frames in a stored sequence:
 	n_frames = len(sample['frames']);
@@ -259,12 +259,14 @@ def getMatchedFeatures(sample, graphics=False):
 		if(n_features > 0):
 			pl.figure();
 			pl.hist(memory_distribution);
-			pl.title('mem dist')
+			pl.title('mem dist');
+			pl.show();
 
 		if(len(TTC_estimates) > 0):
 			pl.figure();
 			pl.hist(TTC_estimates);
 			pl.title('TTC ests')
+			pl.show();
 	
 	if(len(TTC_estimates) > 0):
 		TimeToContact = np.median(TTC_estimates);
@@ -408,6 +410,8 @@ def getImagePoints(FTS, first_frame, second_frame):
 			It returns the image points of the features present in both these frames
 	"""	
 
+	# FTS[ind]['time_steps'] can go from 0 to 4, but if it is not observed for one of the time steps, this one will be missing from the list
+
 	n_features = len(FTS);
 	
 	# make a list of features that have both time steps
@@ -418,10 +422,14 @@ def getImagePoints(FTS, first_frame, second_frame):
 	image_points1 = [];
 	image_points2 = [];
 	for ft in range(n_features):
-		image_points1.append(np.array([selected_features[ft]['x'][first_frame], selected_features[ft]['y'][first_frame]]));
-		image_points1.append(np.array([selected_features[ft]['x'][second_frame], selected_features[ft]['y'][second_frame]]));
+		#image_points1.append(np.array([selected_features[ft]['x'][first_frame], selected_features[ft]['y'][first_frame]]));
+		#image_points2.append(np.array([selected_features[ft]['x'][second_frame], selected_features[ft]['y'][second_frame]]));
+		index_first_frame = selected_features[ft]['time_steps'].index(first_frame);
+		image_points1.append([selected_features[ft]['x'][index_first_frame], selected_features[ft]['y'][index_first_frame]]);
+		index_second_frame = selected_features[ft]['time_steps'].index(second_frame);
+		image_points2.append([selected_features[ft]['x'][index_second_frame], selected_features[ft]['y'][index_second_frame]]);
 
-	return (image_points1, image_points2);
+	return (np.array(image_points1), np.array(image_points2));
 	
 def getFeaturesWithDistance(sample):
 	""" Determines the distances to features that persist throughout the sequence.
@@ -437,6 +445,7 @@ def getFeaturesWithDistance(sample):
 	use_drone_info = True;
 
 	# 1) Get the features that persist throughout the sequence with corresponding TTC estimates (map these to distances with the help of the velocity)
+	pdb.set_trace();
 	(TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED, ALL_FTS) = getMatchedFeatures(sample);
 
 	# check if there are enough features to go by.
@@ -487,6 +496,7 @@ def getFeaturesWithDistance(sample):
 	for fr in range(n_frames-1):
 		
 		# get the relevant image points:
+		# these are points that have the right size of memory, and occur in the two currently relevant images (fr, fr+1):
 		(image_points1, image_points2) = getImagePoints(FTS_USED, fr, fr+1);
 
 		# remember the image points for subsequent bundle adjustment
@@ -494,7 +504,6 @@ def getFeaturesWithDistance(sample):
 		IPs2.append(image_points2);
 
 		if(use_drone_info):
-			pdb.set_trace();
 			# take care of deltas > 2pi
 			delta_phi = np.deg2rad(roll[fr+1] - roll[fr]);
 			delta_theta = np.deg2rad(pitch[fr+1] - pitch[fr]);
@@ -550,6 +559,7 @@ def getFeaturesWithDistance(sample):
 	# to a common frame of reference, that of the first camera view.
 
 	# the first elements in these vectors are already in the frame-of-reference of the first camera:
+	pdb.set_trace();
 	Rs = [Rotations[0]];
 	Ts = [Translations[0]];
 	pw = [points_world[0]];
