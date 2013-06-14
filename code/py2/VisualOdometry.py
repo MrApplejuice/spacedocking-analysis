@@ -472,6 +472,7 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 		# calculate the error for this camera:
 		err = 0;
 		for ip in range(n_world_points):
+			# this should now take into account unobserved points:
 			error_per_point[ip] += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
 			err += error_per_point[ip];
 

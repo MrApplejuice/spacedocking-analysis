@@ -405,9 +405,29 @@ def contains(L, element):
 	
 	return False;
 
-def getImagePoints(FTS, first_frame, second_frame):
-	""" getImagePoints takes the features as determined by the matching, and two frames
-			It returns the image points of the features present in both these frames
+def getImagePoints(FTS, frame):
+	""" getImagePoints takes the features as determined by the matching, and one frame.
+			It returns the image points of the features present in the frame, with (-1,-1) as coordinate for unobserved features.
+	"""	
+
+	n_features = len(FTS);
+	image_points = [];
+	for ft in range(n_features):
+		try:
+			index_frame = selected_features[ft]['time_steps'].index(frame);
+			# point is visible in this frame:
+			image_points.append([selected_features[ft]['x'][index_frame], selected_features[ft]['y'][index_frame]]);
+			break;
+		except ValueError:
+			# point not visible in this frame:
+			image_points.append([-1, -1]);			
+
+	return (np.array(image_points));
+
+
+def getImagePointsTwoFrames(FTS, first_frame, second_frame):
+	""" getImagePointsTwoFrames takes the features as determined by the matching, and two frames
+			It returns the image points of the features present in both these frames, with the indices
 	"""	
 
 	# FTS[ind]['time_steps'] can go from 0 to 4, but if it is not observed for one of the time steps, this one will be missing from the list
@@ -415,7 +435,13 @@ def getImagePoints(FTS, first_frame, second_frame):
 	n_features = len(FTS);
 	
 	# make a list of features that have both time steps
-	selected_features = [FTS[ind] for ind in range(n_features) if (contains(FTS[ind]['time_steps'], first_frame) and contains(FTS[ind]['time_steps'], second_frame))];
+	#selected_features = [FTS[ind] for ind in range(n_features) if (contains(FTS[ind]['time_steps'], first_frame) and contains(FTS[ind]['time_steps'], second_frame))];
+	indices = [];
+	selected_features = [];
+	for ind in range(n_features):
+		if(contains(FTS[ind]['time_steps'], first_frame) and contains(FTS[ind]['time_steps'], second_frame)):
+			selected_features.append(FTS[ind]);
+			indices.append(ind);
 
 	# make a list of the corresponding image points in image 1 and 2:
 	n_features = len(selected_features);
@@ -429,7 +455,7 @@ def getImagePoints(FTS, first_frame, second_frame):
 		index_second_frame = selected_features[ft]['time_steps'].index(second_frame);
 		image_points2.append([selected_features[ft]['x'][index_second_frame], selected_features[ft]['y'][index_second_frame]]);
 
-	return (np.array(image_points1), np.array(image_points2));
+	return (np.array(image_points1), np.array(image_points2), indices);
 	
 def getFeaturesWithDistance(sample):
 	""" Determines the distances to features that persist throughout the sequence.
@@ -445,11 +471,11 @@ def getFeaturesWithDistance(sample):
 	use_drone_info = True;
 
 	# 1) Get the features that persist throughout the sequence with corresponding TTC estimates (map these to distances with the help of the velocity)
-	pdb.set_trace();
 	(TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED, ALL_FTS) = getMatchedFeatures(sample);
 
 	# check if there are enough features to go by.
 	# although with our implementation 8 is the absolute minimum, we require more points for reliability
+	# not all points are visible in each image!
 	n_features = len(FTS_USED);
 	if(n_features < 20):
 		print 'Not enough features for state reconstruction';
@@ -471,14 +497,14 @@ def getFeaturesWithDistance(sample):
 		K = getKdrone2();
 
 	# reconstruct the camera movement and world points from frame to frame:
-	points_world = [];
+	points_world = [[] * n_features];
 	Rotations = [];
 	Translations = [];
 	vx = np.array([0.0] * (n_frames-1));
 	vy = np.array([0.0] * (n_frames-1));
 	vz = np.array([0.0] * (n_frames-1));
-	IPs1 = [];
-	IPs2 = [];
+	# IPs will contain the image_points per image, with coordinate (-1, -1) for invisible points:
+	IPs = [];
 
 	# get state info:
 	roll = np.array([0.0] * n_frames);
@@ -488,6 +514,8 @@ def getFeaturesWithDistance(sample):
 		roll[fr] = sample['frames'][fr]['euler_angles'][roll_index];
 		yaw[fr] = sample['frames'][fr]['euler_angles'][yaw_index];
 		pitch[fr] = sample['frames'][fr]['euler_angles'][pitch_index];
+		# IPs contains the image_points per frame, with (-1, -1) for the unobserved ones:
+		IPs.append(getImagePoints(FTS_USED, fr));
 
 	# get all frame-to-frame reconstructions:
 	phis = np.array([0.0]*(n_frames-1));
@@ -495,13 +523,10 @@ def getFeaturesWithDistance(sample):
 	psis = np.array([0.0]*(n_frames-1));
 	for fr in range(n_frames-1):
 		
-		# get the relevant image points:
-		# these are points that have the right size of memory, and occur in the two currently relevant images (fr, fr+1):
-		(image_points1, image_points2) = getImagePoints(FTS_USED, fr, fr+1);
-
-		# remember the image points for subsequent bundle adjustment
-		IPs1.append(image_points1);
-		IPs2.append(image_points2);
+		# get the image points that have the right size of memory, and occur in the two currently relevant images (fr, fr+1)
+		# indices are necessary, since triangulation between these frames only gives info on world points with these indices:
+		(image_points1, image_points2, indices) = getImagePointsTwoFrames(FTS_USED, fr, fr+1);
+		n_matches = len(indices);
 
 		if(use_drone_info):
 			# take care of deltas > 2pi
@@ -523,12 +548,13 @@ def getFeaturesWithDistance(sample):
 			speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
 			# it is questionable that X is really necessary:
 			X = getTriangulatedPoints(image_points1, image_points2, R, t, K); # conversion problem, probably for image_points
+			for m in range(n_matches):
+				points_world[indices[m]].append(X[m,:]);
 
 			# append rotation:
 			Rotations.append(R);
 			# scale the translation and world points, but don't rotate them yet.
 			Translations.append(t);
-			points_world.append(X);
 
 		else:
 			# 3D reconstruction without scale:
@@ -545,7 +571,10 @@ def getFeaturesWithDistance(sample):
 			Rotations.append(R);
 			# scale the translation and world points, but don't rotate them yet.
 			Translations.append(scale * t);
-			points_world.append(scale * X);
+			# points_world.append(scale * X);
+			for m in range(n_matches):
+				points_world[indices[m]].append(scale * X[m,:]);
+
 
 	# 3) Perform some kind of bundle adjustment
 	
@@ -586,7 +615,7 @@ def getFeaturesWithDistance(sample):
 	
 	# Here we choose one X per point. We can also seed an evolution-like algorithm with all possible triangulations.
 	# First we determine what world point coordinates to start with:
-	X = determineWorldPoints(pw);
+	X = determineWorldPoints(pw); # it is not clear yet how to rotate each point, since now there is uncertainty on when each point was observed.
 	
 	# Then concatenate everything into a large vector:
 	#genome = transformMatricesToGenome(Rs, Ts, X);
@@ -599,8 +628,6 @@ def getFeaturesWithDistance(sample):
 	genome = constructGenome(phis, thetas, psis, Ts, n_features, X);
 	
 	# Get rotations, translations, X_est:
-	IPs = IPs1;
-	IPs.append(IPs2[-1]);
 	(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_features, IPs, 3.0, 10.0, K, genome);
 
 	# Now we have all rotations and translations in the frame of camera 1, 
