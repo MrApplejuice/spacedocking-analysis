@@ -15,9 +15,9 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	prob.ub = [1.0] * n_genes;
 
 	# evolutions, generations and individuals
-	n_evolutions = 20;
-	n_generations = 50;
-	n_individuals = 50;
+	n_evolutions = 1;
+	n_generations = 1;
+	n_individuals = 1;
 
 	if(len(x) == 0):
 		# prior on camera matrices and points:
@@ -25,7 +25,8 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 			x = x + [0.0] * 6;		
 		for p in range(n_points):
 			x = x + [0.0, 0.5, 0.0];
-
+	else:
+		print 'Prior genome: length = %d, max = %f, min = %f' % (len(x), np.max(np.array(x)), np.min(np.array(x)));
 
 	print 'Creating algorithms'
 	algo_list = []
@@ -48,12 +49,14 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	#algo_list.append(algorithm.pso_gen(gen = n_generations, variant=6, neighb_type=3))
 	#algo_list.append(algorithm.pso_gen(gen = n_generations, variant=6, neighb_type=4))
 	
-	algo_list.append(algorithm.sga(gen = n_generations, cr = 0, m = 0.05))
-	algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.05))
-	algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.01))
-	algo_list.append(algorithm.sga(gen = n_generations, cr = 0.1, m = 0.03))
-	algo_list.append(algorithm.sga(gen = n_generations, cr = 0.5, m = 0.5))
-	algo_list.append(algorithm.sga(gen = n_generations, cr = 0.005, m = 0.001))
+	algo_list.append(algorithm.scipy_tnc(maxfun=150));
+
+	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0, m = 0.05))
+	# algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.05))
+	# algo_list.append(algorithm.sga(gen = n_generations, cr = 0.05, m = 0.01))
+	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.1, m = 0.03))
+	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.5, m = 0.5))
+	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.005, m = 0.001))
 	
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.1, m = 0.03, selection = algorithm._algorithm._selection_type.BEST20))
 	#algo_list.append(algorithm.sga(gen = n_generations, cr = 0.1, m = 0.03, selection = algorithm._algorithm._selection_type.BEST20))
@@ -69,8 +72,6 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	# len(algo_list)
 	
 	n_islands = len(algo_list);
-	
-
 
 	for i in range(0, n_islands):
 			print 'Island %d' % i
@@ -84,8 +85,6 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 				archi.push_back(island(algo_list[i], pop))
 			print 'Done with push back'
 
-	
-	
 	avg_fits = np.zeros([n_islands,1]);
 	
 	for evs in range(0,n_evolutions):
@@ -99,7 +98,7 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 		# show the results for this step:
 		i = 0
 		isl_num = 1
-		best_fit = 1E4;
+		best_fit = 1E8;
 		best_ind = 0;
 		for isl in archi:
 			f = open('genome_'+filename+'_'+str(isl_num), "a")
@@ -140,3 +139,36 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	(Rs, Ts, X) = prob.transformGenomeToMatrices(genome, n_views, n_points);
 	return (Rs, Ts, X);
 	
+
+def constructGenome(phis, thetas, psis, Ts, n_world_points, Xs=[]):
+	""" Uses the information present from for example the drone's state estimation to 
+			initialize the genome in a sensible way. 
+	"""
+
+	world_scale = 10.0;
+	t_scale = 3.0;
+
+	# phi, theta, psi, translation of the first view should be all zeros	
+	n_views = len(phis);
+	genome = [];
+	for v in range(n_views):
+		t = Ts[v].tolist();
+		genome += [phis[v] / np.pi, thetas[v] / np.pi, psis[v] / np.pi, t[0][0] / t_scale, t[1][0] / t_scale, t[2][0] / t_scale];
+
+	if(len(Xs) == 0):
+		for p in range(n_world_points):
+			genome += [0.0, 0.0, 5.0 / world_scale];
+	else:
+		for p in range(n_world_points):
+			genome += (Xs[p,:] / world_scale).tolist();
+
+	# ensure bounds:
+	for g in range(len(genome)):
+		gene = genome[g];
+		if(gene >= 1.0):
+			genome[g] = 0.9999;
+		elif(gene <= -1.0):
+			genome[g] = -0.9999;
+	
+	return genome;
+

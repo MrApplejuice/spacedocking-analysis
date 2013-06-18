@@ -13,6 +13,8 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 			It returns (R, t, X), i.e., a rotation matrix R, translation t, and world points X.
 	"""
 
+	n_points = len(image_points1);
+
 	# location camera 1:
 	l1 = np.zeros([3,1]);
 	R1 = np.eye(3);
@@ -46,6 +48,10 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	# reproject the points into the 3D-world:
 	index_r = 0; index_t = 0;
 	for ir in range(2):
+
+		# clean up the rotation matrix, i.e., don't allow mirroring of any axis:
+		R2s[ir] = cleanUpR(R2s[ir]);
+
 		for it in range(2):
 			point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
 
@@ -60,6 +66,42 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	# triangulate the image points to obtain world coordinates:
 	X_est = triangulate(ip1, ip2, P1, P2_est);
 
+	# BUNDLE ADJUSTMENT:
+	bundle_adjustment = False;
+	if(bundle_adjustment):
+		# evolve a solution:
+		IPs = [];
+		IPs.append(image_points1);
+		IPs.append(image_points2);
+		# seed the evolution with some pre-knowledge:
+		phis = [0.0];
+		thetas = [0.0];
+		psis = [0.0];
+		#Ts = [t];
+		t2e = np.zeros([3,1]);
+		for i in range(3):
+			t2e[i,0] = t2_est[i];
+		Ts = [t2e];
+		# points;
+		W = np.zeros([n_points, 3]);
+		for p in range(n_points):
+			for i in range(3):
+				W[p, i] = X_est[p][i];
+
+		# calculate reprojection error before further optimization:
+		Rs = [R1]; Rs.append(R2_est);
+		Ts = [l1]; Ts.append(t2e);
+		(err, errors_per_point) = calculateReprojectionError(Rs, Ts, W, IPs, 2, n_points, K);
+
+		# determine the genome on the above information:
+		genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
+	
+		# Get rotations, translations, X_est:
+		(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);
+		R2_est = Rs[1];
+		t2_est = Ts[1];
+
+
 	print 't_est = %f, %f, %f' % (t2_est[0], t2_est[1], t2_est[2]);
 	print 'R = '
 	printRotationMatrix(R2_est);	
@@ -69,11 +111,41 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 
 def getK(W=640.0, H=480.0):
 	""" Constructs a standard calibration matrix given a width and height in pixels. """
+
 	K = np.zeros([3,3]);
 	K[0,0] = W;
+	K[0,2] = W / 2.0;
 	K[1,1] = H;
+	K[1,2] = H / 2.0;
 	K[2,2] = 1.0;
 
+	return K;
+
+def getKdrone1():
+	""" Calibration matrix of drone 1 """
+	#AR Drone 1: 320x240  (4:3 aspect ratio)
+	K = np.zeros([3,3]);
+	K[0,0] = 320.0;
+	K[0,1] = 0.0;
+	K[0,2] = 160.0;
+	K[1,0] = 0.0;
+	K[1,1] = 320.0;
+	K[1,2] = 120.0;
+	K[2,2] = 1.0;
+	return K;
+	
+def getKdrone2():
+	""" Calibration matrix of drone 2 from cvdrone """
+	#AR Drone 2: 640x360  (16:9 aspect ratio)
+
+	K = np.zeros([3,3]);
+	K[0,0] = 5.81399719e+002;
+	K[0,1] = 0.0;
+	K[0,2] = 3.17410492e+002;
+	K[1,0] = 0.0;
+	K[1,1] = 5.78456116e+002;
+	K[1,2] = 1.37808365e+002;
+	K[2,2] = 1.0;
 	return K;
 
 def testVisualOdometry(n_points=100):
@@ -128,8 +200,8 @@ def testVisualOdometry(n_points=100):
 	rvec2 = rvec2[0];
 
 	# create X, Y, Z points:
-	size = 4;
-	distance = 10;
+	size = 3;
+	distance = 5;
 	transl = np.zeros([1,3]);
 	transl[0,2] = distance; # is Z in the direction of the principal axis?
 	points_world = np.zeros([n_points, 3]);
@@ -153,75 +225,106 @@ def testVisualOdometry(n_points=100):
 	result = cv2.projectPoints(points_world, rvec2, t, K, distCoeffs);
 	image_points2 = result[0];
 
-	# Solve the problem:
-	EVOLVE_SOLUTION = True;
-
-	if(not(EVOLVE_SOLUTION)):
-
-		# determine the rotation and translation between the two views:
-		(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
-		# pdb.set_trace();
-		# 'wrong' solutions have a negative element on the diagonal, but calling determineTransformation repetitively does not help... 
-		# ws = wrongSolution(R21, R22);
-		# while(ws == 1):
-				# (R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
-				# ws = wrongSolution(R21, R22);
-
-		print 'R21 = '
-		printRotationMatrix(R21);
-		print 'R22 = '
-		printRotationMatrix(R22);
-		#R21 = R2.T;
-		#R22 = R2;
-		#t21 = -t;
-		#t22 = t;
+	add_noise = True;
+	if(add_noise):
+		for p in range(n_points):
+			image_points1[p][0][0] += np.random.normal(0.0, 0.5);
+			image_points1[p][0][1] += np.random.normal(0.0, 0.5);			
+			image_points2[p][0][0] += np.random.normal(0.0, 0.5);
+			image_points2[p][0][1] += np.random.normal(0.0, 0.5);			
 
 
-		# 3D-reconstruction:
-		ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
-		ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
+	# determine the rotation and translation between the two views:
+	(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
+	# pdb.set_trace();
+	# 'wrong' solutions have a negative element on the diagonal, but calling determineTransformation repetitively does not help... 
+	# ws = wrongSolution(R21, R22);
+	# while(ws == 1):
+			# (R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
+			# ws = wrongSolution(R21, R22);
 
-		# P1 is at the origin
-		P1 = np.zeros([3, 4]);
-		P1[:3,:3] = np.eye(3);
-		P1 = np.dot(K, P1);
+	print 'R21 = '
+	printRotationMatrix(R21);
+	print 'R22 = '
+	printRotationMatrix(R22);
+	#R21 = R2.T;
+	#R22 = R2;
+	#t21 = -t;
+	#t22 = t;
 
-		# P2 is rotated and translated with respect to camera 1
-		# determine the right R, t:
-		# iterate over all points, reproject them to the 3D-world
-		# exclude one of the options as soon as 	
-		# first determine all 4 projection matrices:
-		R2s = [];
-		R2s.append(R21);
-		R2s.append(R22);
-		t2s = [];
-		t2s.append(t21);
-		t2s.append(t22);
 
-		# reproject the points into the 3D-world:
-		index_r = 0; index_t = 0;
-		for ir in range(2):
-			for it in range(2):
-				point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
+	# 3D-reconstruction:
+	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
+	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
 
-				if(point_behind == 0):
-					index_r = ir;
-					index_t = it;
-					print 'ir, it = %d, %d' % (ir, it)
+	# P1 is at the origin
+	P1 = np.zeros([3, 4]);
+	P1[:3,:3] = np.eye(3);
+	P1 = np.dot(K, P1);
 
-		P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
-		R2_est = R2s[index_r]; t2_est = t2s[index_t];
+	# P2 is rotated and translated with respect to camera 1
+	# determine the right R, t:
+	# iterate over all points, reproject them to the 3D-world
+	# exclude one of the options as soon as 	
+	# first determine all 4 projection matrices:
+	R2s = [];
+	R2s.append(R21);
+	R2s.append(R22);
+	t2s = [];
+	t2s.append(t21);
+	t2s.append(t22);
 
-		# triangulate the image points to obtain world coordinates:
-		X_est = triangulate(ip1, ip2, P1, P2_est);
+	# reproject the points into the 3D-world:
+	index_r = 0; index_t = 0;
+	for ir in range(2):
+		# clean up the rotation matrix, i.e., don't allow mirroring of any axis:
+		R2s[ir] = cleanUpR(R2s[ir]);
+		for it in range(2):
+			point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
 
-	else:
+			if(point_behind == 0):
+				index_r = ir;
+				index_t = it;
+				print 'ir, it = %d, %d' % (ir, it)
+
+	
+
+	P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
+	R2_est = R2s[index_r]; t2_est = t2s[index_t];
+
+	# triangulate the image points to obtain world coordinates:
+	X_est = triangulate(ip1, ip2, P1, P2_est);
+
+	# We could determine the reprojection error already here. It is close to 0 for a good estimate
+	# and in the 10,000s for a bad estimate.
+
+	# BUNDLE ADJUSTMENT:
+	bundle_adjustment = True;
+
+	if(bundle_adjustment):
 		# evolve a solution:
 		IPs = [];
 		IPs.append(image_points1);
-		IPs.append(image_points2);		
+		IPs.append(image_points2);
+		# seed the evolution with some pre-knowledge:
+		phis = [phi];
+		thetas = [theta];
+		psis = [psi];
+		#Ts = [t];
+		t2e = np.zeros([3,1]);
+		for i in range(3):
+			t2e[i,0] = t2_est[i];
+		Ts = [t2e];
+		# points;
+		W = np.zeros([n_points, 3]);
+		for p in range(n_points):
+			for i in range(3):
+				W[p, i] = X_est[p][i];
+
+		genome = constructGenome(phis, thetas, psis, Ts, n_points, W);
+	
 		# Get rotations, translations, X_est
-		(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K);	
+		(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_points, IPs, 3.0, 10.0, K, genome);
 		R2_est = Rs[1];
 		t2_est = Ts[1];
 
@@ -236,9 +339,14 @@ def testVisualOdometry(n_points=100):
 	print 'Scale = %f, Mean scale = %f' % (scale, 1.0/sc);
 
 	# scale:
-	X_est = X_est * (1.0/sc);	
+	# X_est = X_est * (1.0/sc);	
 
 	# show visually:
+
+	# calculate reprojection error:
+	Rs = [R1]; Rs.append(R2_est);
+	Ts = [l1]; Ts.append(t2_est);
+	(err, errors_per_point) = calculateReprojectionError(Rs, Ts, W, IPs, 2, n_points, K);
 
 	fig = pl.figure()
 	ax = fig.gca(projection='3d')
@@ -248,18 +356,18 @@ def testVisualOdometry(n_points=100):
 
 	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = np.array(M_est[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, '*', color=(1.0,0,0));
-
-
+	#ax.scatter(x, y, z, '*', color=(1.0,0,0));
+	cm = pl.cm.get_cmap('hot')
+	ax.scatter(x, y, z, '*', c=errors_per_point, cmap=cm);
 	fig.hold = True;
 
-	x = (1.0/sc)*np.array(M_est[:,0]); y = (1.0/sc)*np.array(M_est[:,1]); z = (1.0/sc)*np.array(M_est[:,2]);
-	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, 's', color=(0,0,1.0));
+	#x = (1.0/sc)*np.array(M_est[:,0]); y = (1.0/sc)*np.array(M_est[:,1]); z = (1.0/sc)*np.array(M_est[:,2]);
+	#x = flatten(x); y = flatten(y); z = flatten(z);
+	#ax.scatter(x, y, z, 's', color=(0,0,1.0));
 
 	x = np.array(M_world[:,0]); y = np.array(M_world[:,1]); z = np.array(M_world[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, 'o', color=(0.0,0.0,0.0));
+	ax.scatter(x, y, z, 'o', color=(0.0,1.0,0.0));
 
 	ax.axis('tight');
 	pl.show();
@@ -270,9 +378,69 @@ def testVisualOdometry(n_points=100):
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
 
+def getTriangulatedPoints(image_points1, image_points2, R2, t2, K):
+
+	""" Get the triangulated world points on the basis of corresponding image points and 
+			a rotation matrix, displacement vector and calibration matrix.
+	"""
+
+	# 3D-reconstruction:
+	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
+	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
+
+	# P1 is at the origin
+	P1 = np.zeros([3, 4]);
+	P1[:3,:3] = np.eye(3);
+	P1 = np.dot(K, P1);
+
+	# P2 is the displaced camera:
+	P2_est = getProjectionMatrix(R2, t2, K);
+
+	# reconstruct the points:
+	X_est = triangulate(ip1, ip2, P1, P2_est);
+
+	return X_est;
+
+
+def cleanUpR(R):
+	for i in range(3):
+		if(R[i,i] < 0):
+			for c in range(3):
+				R[i,c] = -R[i,c];
+	
+	return R;
+
 def flatten(X):
 	Y = [x[0] for x in X];
 	return Y;
+
+def getRotationMatrix(phi, theta, psi):
+		""" Create rotation matrix R on the basis of phi, theta, psi 
+		"""
+		R_phi = np.zeros([3,3]);
+		R_phi[0,0] = 1;
+		R_phi[1,1] = np.cos(phi);
+		R_phi[1,2] = np.sin(phi);
+		R_phi[2,1] = -np.sin(phi);
+		R_phi[2,2] = np.cos(phi);
+
+		R_theta = np.zeros([3,3]);
+		R_theta[1,1] = 1;
+		R_theta[0,0] = np.cos(theta);
+		R_theta[2,0] = -np.sin(theta);
+		R_theta[0,2] = np.sin(theta);
+		R_theta[2,2] = np.cos(theta);
+
+		R_psi = np.zeros([3,3]);
+		R_psi[0,0] = np.cos(psi);
+		R_psi[0,1] = np.sin(psi);
+		R_psi[1,0] = -np.sin(psi);
+		R_psi[1,1] = np.cos(psi);
+		R_psi[2,2] = 1;
+
+		R = np.dot(R_psi, np.dot(R_theta, R_phi));
+
+		return R;
 
 def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 	"""	calculateReprojectionError takes a number of rotation and translation matrices, 
@@ -286,6 +454,8 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 
 	# per camera, project the world points into the image and calculate the error with respect to the measured image points:
 	total_error = 0;
+	error_per_point = np.array([0.0]*n_world_points);
+
 	for cam in range(n_cameras):
 
 		# The measured image points:
@@ -302,11 +472,13 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 		# calculate the error for this camera:
 		err = 0;
 		for ip in range(n_world_points):
-			err += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
+			error_per_point[ip] += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
+			err += error_per_point[ip];
 
+		# print 'Total error: %f' % total_error;
 		total_error += err;
 
-	return total_error;
+	return (total_error, error_per_point);
 
 def printRotationMatrix(R):
 

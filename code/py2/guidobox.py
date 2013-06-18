@@ -51,7 +51,7 @@ def initializeFeatures(features, time_step):
 		feature = {'sizes': [], 'descriptors': [], 'time_steps': [], 'n_not_observed': 0, 'x': [], 'y': []};
 		FTS.append(feature);
 		FTS[f]['sizes'].append( features[f]['size'] );
-		FTS[f]['time_steps'].append( time_step );
+		FTS[f]['time_steps'].append( time_step ); # goes from 1 to 4???
 		FTS[f]['descriptors'].append( features[f]['descriptor'] );
 		FTS[f]['x'].append( features[f]['x'] );
 		FTS[f]['y'].append( features[f]['y'] );
@@ -81,7 +81,7 @@ def getMatchedFeatures(sample, graphics=False):
 	"""
 
 	# whether to show graphics.
-	ttc_graphics = False;
+	ttc_graphics = True;
 
 	# nearest neighbor threshold for matching:
 	NN_THRESHOLD = 0.75;
@@ -90,7 +90,7 @@ def getMatchedFeatures(sample, graphics=False):
 	max_n_not_observed = 1;
 	
 	# minimum number of observations of a feature to be considered for the estimate:
-	min_memory = 4; # 4 means that the features are present in all images
+	min_memory = 4; # 4 means that the features are present in all images: is that true?
 	
 	# number of frames in a stored sequence:
 	n_frames = len(sample['frames']);
@@ -259,12 +259,14 @@ def getMatchedFeatures(sample, graphics=False):
 		if(n_features > 0):
 			pl.figure();
 			pl.hist(memory_distribution);
-			pl.title('mem dist')
+			pl.title('mem dist');
+			pl.show();
 
 		if(len(TTC_estimates) > 0):
 			pl.figure();
 			pl.hist(TTC_estimates);
 			pl.title('TTC ests')
+			pl.show();
 	
 	if(len(TTC_estimates) > 0):
 		TimeToContact = np.median(TTC_estimates);
@@ -297,7 +299,7 @@ def determineTTCLinearFit(feature):
 	if(abs(size_slope) > 1E-3):
 		TTC = feature['sizes'][-1] / size_slope;
 	else:
-		TTC = sign(size_slope) * 1E3;
+		TTC = np.sign(size_slope) * 1E3;
 		
 	#pl.figure();
 	#pl.plot(feature['time_steps'], feature['sizes'], 'x', color=(0.0,0.0,0.0));
@@ -377,6 +379,7 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	K = getK(w1, h1);
 
 	# 3D reconstruction:
+	# we should subtract (W/2, H/2) from the image points!
 	(R, t, X) = performStructureFromMotion(np.array(points1), np.array(points2), K, w1, h1);
 
 	# show 3D reconstruction:
@@ -385,7 +388,8 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 	M_est = np.matrix(X);
 	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = np.array(M_est[:,2]);
 	x = flatten(x); y = flatten(y); z = flatten(z);
-	ax.scatter(x, y, z, '*', color=(1.0,0,0));
+	cm = pl.cm.get_cmap('hot')
+	ax.scatter(x, y, z, '*', c=errors_per_point, cmap=cm);
 	pl.show();
 
 
@@ -405,6 +409,10 @@ def getImagePoints(FTS, first_frame, second_frame):
 	""" getImagePoints takes the features as determined by the matching, and two frames
 			It returns the image points of the features present in both these frames
 	"""	
+
+	# FTS[ind]['time_steps'] can go from 0 to 4, but if it is not observed for one of the time steps, this one will be missing from the list
+
+	n_features = len(FTS);
 	
 	# make a list of features that have both time steps
 	selected_features = [FTS[ind] for ind in range(n_features) if (contains(FTS[ind]['time_steps'], first_frame) and contains(FTS[ind]['time_steps'], second_frame))];
@@ -414,10 +422,14 @@ def getImagePoints(FTS, first_frame, second_frame):
 	image_points1 = [];
 	image_points2 = [];
 	for ft in range(n_features):
-		image_points1.append(np.array([selected_features[ft]['x'][first_frame], selected_features[ft]['y'][first_frame]]));
-		image_points1.append(np.array([selected_features[ft]['x'][second_frame], selected_features[ft]['y'][second_frame]]));
+		#image_points1.append(np.array([selected_features[ft]['x'][first_frame], selected_features[ft]['y'][first_frame]]));
+		#image_points2.append(np.array([selected_features[ft]['x'][second_frame], selected_features[ft]['y'][second_frame]]));
+		index_first_frame = selected_features[ft]['time_steps'].index(first_frame);
+		image_points1.append([selected_features[ft]['x'][index_first_frame], selected_features[ft]['y'][index_first_frame]]);
+		index_second_frame = selected_features[ft]['time_steps'].index(second_frame);
+		image_points2.append([selected_features[ft]['x'][index_second_frame], selected_features[ft]['y'][index_second_frame]]);
 
-	return (image_points1, image_points2);
+	return (np.array(image_points1), np.array(image_points2));
 	
 def getFeaturesWithDistance(sample):
 	""" Determines the distances to features that persist throughout the sequence.
@@ -429,12 +441,16 @@ def getFeaturesWithDistance(sample):
 	# 3) Perform some kind of bundle adjustment
 	# 4) Determine a distance per feature in the last frame
 
+	# if True, the translation and rotation are used and step 2 above skipped:
+	use_drone_info = True;
+
 	# 1) Get the features that persist throughout the sequence with corresponding TTC estimates (map these to distances with the help of the velocity)
+	pdb.set_trace();
 	(TimeToContact, n_features_used_for_estimate, TTC_estimates, FTS_USED, ALL_FTS) = getMatchedFeatures(sample);
 
 	# check if there are enough features to go by.
 	# although with our implementation 8 is the absolute minimum, we require more points for reliability
-	n_features = len(FTS);
+	n_features = len(FTS_USED);
 	if(n_features < 20):
 		print 'Not enough features for state reconstruction';
 		distsReconstruction = []; distsTTC = [];
@@ -446,10 +462,13 @@ def getFeaturesWithDistance(sample):
 	n_frames = len(sample['frames']);
 
 	# width and height of the image, should be determined with sample:
-	W = 640; H = 480;
-
-	# get dummy camera calibration matrix:
-	K = getK(W, H);
+	device_version = sample['device_version'];
+	if(isDrone1(device_version)):
+		# W = 320; H = 240;
+		K = getKdrone1();
+	else:
+		# W = 640; H = 360;
+		K = getKdrone2();
 
 	# reconstruct the camera movement and world points from frame to frame:
 	points_world = [];
@@ -460,31 +479,73 @@ def getFeaturesWithDistance(sample):
 	vz = np.array([0.0] * (n_frames-1));
 	IPs1 = [];
 	IPs2 = [];
+
+	# get state info:
+	roll = np.array([0.0] * n_frames);
+	yaw = np.array([0.0] * n_frames);
+	pitch = np.array([0.0] * n_frames);
+	for fr in range(n_frames):
+		roll[fr] = sample['frames'][fr]['euler_angles'][roll_index];
+		yaw[fr] = sample['frames'][fr]['euler_angles'][yaw_index];
+		pitch[fr] = sample['frames'][fr]['euler_angles'][pitch_index];
+
 	# get all frame-to-frame reconstructions:
+	phis = np.array([0.0]*(n_frames-1));
+	thetas = np.array([0.0]*(n_frames-1));
+	psis = np.array([0.0]*(n_frames-1));
 	for fr in range(n_frames-1):
 		
 		# get the relevant image points:
+		# these are points that have the right size of memory, and occur in the two currently relevant images (fr, fr+1):
 		(image_points1, image_points2) = getImagePoints(FTS_USED, fr, fr+1);
 
 		# remember the image points for subsequent bundle adjustment
 		IPs1.append(image_points1);
 		IPs2.append(image_points2);
 
-		# 3D reconstruction without scale:
-		(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, W, H);
+		if(use_drone_info):
+			# take care of deltas > 2pi
+			delta_phi = np.deg2rad(roll[fr+1] - roll[fr]);
+			delta_theta = np.deg2rad(pitch[fr+1] - pitch[fr]);
+			delta_psi = np.deg2rad(yaw[fr+1] - yaw[fr]);
+			R = getRotationMatrix(delta_phi, delta_theta, delta_psi);
+			phis[fr] = delta_phi;
+			thetas[fr] = delta_theta;
+			psis[fr] = delta_psi;
+			vx[fr] = sample['frames'][fr]['velocities'][vx_index] / 1000.0;
+			vy[fr] = sample['frames'][fr]['velocities'][vy_index] / 1000.0;
+			vz[fr] = sample['frames'][fr]['velocities'][vz_index] / 1000.0; # is always zero... but Z is not... and can be used here, since absolute height does not matter
+			t = np.zeros([3,1]);
+			t[0] = vx[fr];
+			t[1] = vy[fr];
+			t[2] = vz[fr];
+			t = t * snapshot_time_interval;
+			speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
+			# it is questionable that X is really necessary:
+			X = getTriangulatedPoints(image_points1, image_points2, R, t, K); # conversion problem, probably for image_points
 
-		# determine the scale on the basis of the velocity:
-		vx[fr] = sample['frames'][fr]['velocities'][vx_index];
-		vy[fr] = sample['frames'][fr]['velocities'][vy_index];
-		vz[fr] = sample['frames'][fr]['velocities'][vz_index];
-		speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
-		scale = snapshot_time_interval * speed;
+			# append rotation:
+			Rotations.append(R);
+			# scale the translation and world points, but don't rotate them yet.
+			Translations.append(t);
+			points_world.append(X);
 
-		# append rotation:
-		Rotations.append(R);
-		# scale the translation and world points, but don't rotate them yet.
-		Translations.append(scale * t);
-		points_world.append(scale * X);
+		else:
+			# 3D reconstruction without scale:
+			(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, W, H);
+
+			# determine the scale on the basis of the velocity:
+			vx[fr] = sample['frames'][fr]['velocities'][vx_index];
+			vy[fr] = sample['frames'][fr]['velocities'][vy_index];
+			vz[fr] = sample['frames'][fr]['velocities'][vz_index];
+			speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
+			scale = snapshot_time_interval * speed;
+
+			# append rotation:
+			Rotations.append(R);
+			# scale the translation and world points, but don't rotate them yet.
+			Translations.append(scale * t);
+			points_world.append(scale * X);
 
 	# 3) Perform some kind of bundle adjustment
 	
@@ -498,6 +559,7 @@ def getFeaturesWithDistance(sample):
 	# to a common frame of reference, that of the first camera view.
 
 	# the first elements in these vectors are already in the frame-of-reference of the first camera:
+	pdb.set_trace();
 	Rs = [Rotations[0]];
 	Ts = [Translations[0]];
 	pw = [points_world[0]];
@@ -522,17 +584,24 @@ def getFeaturesWithDistance(sample):
 		# add it to the list of rotations:
 		Rs = Rs.append(Rotation_cam1);
 	
+	# Here we choose one X per point. We can also seed an evolution-like algorithm with all possible triangulations.
 	# First we determine what world point coordinates to start with:
 	X = determineWorldPoints(pw);
 	
 	# Then concatenate everything into a large vector:
-	genome = transformMatricesToGenome(Rs, Ts, X);
-	
+	#genome = transformMatricesToGenome(Rs, Ts, X);
 	# And optimize:
 	# optimizeReconstructionGenome(genome, IPs1, IPs2, n_frames-1, n_world_points);
-
 	# transform the genome back to matrices:
-	(Rs, Ts, X) = transformGenomeToMatrices(genome, n_cameras, n_world_points);
+	#(Rs, Ts, X) = transformGenomeToMatrices(genome, n_cameras, n_world_points);
+
+	# determine the genome on the above information:
+	genome = constructGenome(phis, thetas, psis, Ts, n_features, X);
+	
+	# Get rotations, translations, X_est:
+	IPs = IPs1;
+	IPs.append(IPs2[-1]);
+	(Rs, Ts, X_est) = evolveReconstruction('test', 2, n_features, IPs, 3.0, 10.0, K, genome);
 
 	# Now we have all rotations and translations in the frame of camera 1, 
 	# and the world points. We now want to know the distances to the points
@@ -546,70 +615,76 @@ def getFeaturesWithDistance(sample):
 	
 	return (distances, distances_TTC);
 		
-def transformMatricesToGenome(Rs, Ts, X):
-	""" Transforms lists of rotation matrices, translation vectors, and world points to a vector that can be used for optimization.
-	"""
-	genome = [];
-	n_mats = len(Rs);
-	# Rotations:
-	for m in range(n_mats):
-		R = Rs[m].tolist();
-		n_rows = len(R);
-		for r in range(n_rows):
-			for c in range(3):
-				genome.append(R[r][c]);
+def isDrone1(device_string):
+	if(device_string.find('ARDrone 2') == -1):
+		return True;
+	else:
+		return False;
 
-	# Translations:
-	for m in range(n_mats):
-		t = Ts[m].tolist();
-		for ti in range(3):
-			genome.append(t[ti]);
+#def transformMatricesToGenome(Rs, Ts, X):
+#	""" Transforms lists of rotation matrices, translation vectors, and world points to a vector that can be used for optimization.
+#	"""
+#	genome = [];
+#	n_mats = len(Rs);
+#	# Rotations:
+#	for m in range(n_mats):
+#		R = Rs[m].tolist();
+#		n_rows = len(R);
+#		for r in range(n_rows):
+#			for c in range(3):
+#				genome.append(R[r][c]);
 
-	# World points:
-	n_world_points = len(X);
-	for p in range(n_world_points):
-		genome.append(X[p].tolist());
+#	# Translations:
+#	for m in range(n_mats):
+#		t = Ts[m].tolist();
+#		for ti in range(3):
+#			genome.append(t[ti]);
 
-	return genome;
+#	# World points:
+#	n_world_points = len(X);
+#	for p in range(n_world_points):
+#		genome.append(X[p].tolist());
 
-def transformGenomeToMatrices(genome, n_cameras, n_world_points):
-	""" Transforms the optimized genome to rotation matrices, translation vectors, and world points.
-	"""
+#	return genome;
 
-	# Get rotation matrices:
-	Rs = [];
-	nR = 9;
-	for cam in range(n_cameras):
-		part = genome[cam*nR:(cam+1)*nR];
-		R = np.zeros([3,3]);
-		index = 0;
-		for r in range(3):
-			for c in range(3):
-				R[r][c] = part[index];
-				index += 1;
-		Rs.append(R);
-	
-	# Get translation vectors:
-	start_ind = n_cameras * nR;
-	Ts = [];
-	nT = 3;
-	for cam in range(n_cameras):
-		part = genome[start_ind + cam * nT : start_ind + (cam+1) * nT];
-		t = np.zeros([3,1]);
-		for ti in range(nT):
-				t[ti] = part[ti];
-		Ts.append(t);
+#def transformGenomeToMatrices(genome, n_cameras, n_world_points):
+#	""" Transforms the optimized genome to rotation matrices, translation vectors, and world points.
+#	"""
 
-	# Get the world points:
-	start_ind = start_ind + n_cameras * nT;
-	pw = [];
-	nX = 3;
-	for p in range(n_world_points):
-		part = genome[start_ind + p * nX : start_ind + (p+1) * nX];	
-		point = np.array(part);
-		pw.append(point);
+#	# Get rotation matrices:
+#	Rs = [];
+#	nR = 9;
+#	for cam in range(n_cameras):
+#		part = genome[cam*nR:(cam+1)*nR];
+#		R = np.zeros([3,3]);
+#		index = 0;
+#		for r in range(3):
+#			for c in range(3):
+#				R[r][c] = part[index];
+#				index += 1;
+#		Rs.append(R);
+#	
+#	# Get translation vectors:
+#	start_ind = n_cameras * nR;
+#	Ts = [];
+#	nT = 3;
+#	for cam in range(n_cameras):
+#		part = genome[start_ind + cam * nT : start_ind + (cam+1) * nT];
+#		t = np.zeros([3,1]);
+#		for ti in range(nT):
+#				t[ti] = part[ti];
+#		Ts.append(t);
 
-	return (Rs, Ts, pw);
+#	# Get the world points:
+#	start_ind = start_ind + n_cameras * nT;
+#	pw = [];
+#	nX = 3;
+#	for p in range(n_world_points):
+#		part = genome[start_ind + p * nX : start_ind + (p+1) * nX];	
+#		point = np.array(part);
+#		pw.append(point);
+
+#	return (Rs, Ts, pw);
 	
 	
 def determineWorldPoints(pw):
@@ -1060,14 +1135,15 @@ def evaluateDistances(test_dir="../data", data_name="output.txt", selectSubset=T
 		
 	# iterate over the data:
 	n_samples = len(result);
-	n_frames = size(result[0]['frames']);
+	n_frames = len(result[0]['frames']);
 
 	D = []; D_TTC = [];
 	for sample in result:
 		# determine the distances to all features that persist through the entire sequence:
 		(distances, distances_TTC) = getFeaturesWithDistance(sample);
-		D.append(distances.tolist());
-		D_TTC.append(distances_TTC.tolist());
+		if(len(distances) > 0):
+			D.append(distances.tolist());
+			D_TTC.append(distances_TTC.tolist());
 		
 	# compare the distances:
 	pl.figure();
