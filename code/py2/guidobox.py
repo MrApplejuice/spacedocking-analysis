@@ -380,7 +380,7 @@ def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 
 	# 3D reconstruction:
 	# we should subtract (W/2, H/2) from the image points!
-	(R, t, X) = performStructureFromMotion(np.array(points1), np.array(points2), K, w1, h1);
+	(R, t, X, errors_per_point) = performStructureFromMotion(np.array(points1), np.array(points2), K, w1, h1);
 
 	# show 3D reconstruction:
 	fig = pl.figure()
@@ -529,14 +529,16 @@ def getFeaturesWithDistance(sample):
 		n_matches = len(indices);
 
 		if(use_drone_info):
-			# take care of deltas > 2pi
-			delta_phi = np.deg2rad(roll[fr+1] - roll[fr]);
-			delta_theta = np.deg2rad(pitch[fr+1] - pitch[fr]);
-			delta_psi = np.deg2rad(yaw[fr+1] - yaw[fr]);
+			# get the rotation from the drone data: 
+			delta_phi = limit_angle(np.deg2rad(roll[fr+1] - roll[fr]));
+			delta_theta = limit_angle(np.deg2rad(pitch[fr+1] - pitch[fr]));
+			delta_psi = limit_angle(np.deg2rad(yaw[fr+1] - yaw[fr]));
+			# This assumes the camera to be on the center-of-gravity:
 			R = getRotationMatrix(delta_phi, delta_theta, delta_psi);
 			phis[fr] = delta_phi;
 			thetas[fr] = delta_theta;
 			psis[fr] = delta_psi;
+			# determine the translation with the help of drone data:
 			vx[fr] = sample['frames'][fr]['velocities'][vx_index] / 1000.0;
 			vy[fr] = sample['frames'][fr]['velocities'][vy_index] / 1000.0;
 			vz[fr] = sample['frames'][fr]['velocities'][vz_index] / 1000.0; # is always zero... but Z is not... and can be used here, since absolute height does not matter
@@ -547,7 +549,9 @@ def getFeaturesWithDistance(sample):
 			t = t * snapshot_time_interval;
 			speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
 			# it is questionable that X is really necessary:
-			X = getTriangulatedPoints(image_points1, image_points2, R, t, K); # conversion problem, probably for image_points
+			X = getTriangulatedPoints(image_points1, image_points2, R, t, K);
+			# like this it is impossible to determine what rotation to apply to the points
+			# so should we rotate them immediately? Or include more info? Or add empty elements to the vector for non-matched points?
 			for m in range(n_matches):
 				points_world[indices[m]].append(X[m,:]);
 
@@ -558,7 +562,7 @@ def getFeaturesWithDistance(sample):
 
 		else:
 			# 3D reconstruction without scale:
-			(R, t, X) = performStructureFromMotion(image_points1, image_points2, K, W, H);
+			(R, t, X, errors_per_point) = performStructureFromMotion(image_points1, image_points2, K, W, H);
 
 			# determine the scale on the basis of the velocity:
 			vx[fr] = sample['frames'][fr]['velocities'][vx_index];
@@ -642,6 +646,16 @@ def getFeaturesWithDistance(sample):
 	
 	return (distances, distances_TTC);
 		
+def limit_angle(angle):
+	# angle will be in [-pi, pi]
+	while(angle >= np.pi):
+		angle -= 2*np.pi;
+
+	while(angle < -np.pi):
+		angle += 2*np.pi;
+
+	return angle;
+
 def isDrone1(device_string):
 	if(device_string.find('ARDrone 2') == -1):
 		return True;

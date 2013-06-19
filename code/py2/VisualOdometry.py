@@ -67,7 +67,7 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	X_est = triangulate(ip1, ip2, P1, P2_est);
 
 	# BUNDLE ADJUSTMENT:
-	bundle_adjustment = False;
+	bundle_adjustment = True;
 	if(bundle_adjustment):
 		# evolve a solution:
 		IPs = [];
@@ -107,7 +107,7 @@ def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	printRotationMatrix(R2_est);	
 
 	# now we have R2, t2, and X, which we return:
-	return (R2_est, t2_est, X_est);	
+	return (R2_est, t2_est, X_est, errors_per_point);	
 
 def getK(W=640.0, H=480.0):
 	""" Constructs a standard calibration matrix given a width and height in pixels. """
