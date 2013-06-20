@@ -4,7 +4,8 @@
 
 import sys
 import os
-#sys.path += [os.path.join(os.path.realpath("."), os.path.dirname(sys.argv[0]), p) for p in ["py2", "universal"]]
+
+sys.path += [os.path.join(os.path.realpath("."), os.path.dirname(sys.argv[0]), p) for p in ["py2", "universal"]]
 sys.path.insert(0, './universal/')
 sys.path.insert(0, './py2/')
 
