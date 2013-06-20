@@ -414,10 +414,9 @@ def getImagePoints(FTS, frame):
 	image_points = [];
 	for ft in range(n_features):
 		try:
-			index_frame = selected_features[ft]['time_steps'].index(frame);
+			index_frame = FTS[ft]['time_steps'].index(frame);
 			# point is visible in this frame:
-			image_points.append([selected_features[ft]['x'][index_frame], selected_features[ft]['y'][index_frame]]);
-			break;
+			image_points.append([FTS[ft]['x'][index_frame], FTS[ft]['y'][index_frame]]);
 		except ValueError:
 			# point not visible in this frame:
 			image_points.append([-1, -1]);			
@@ -533,7 +532,7 @@ def getFeaturesWithDistance(sample):
 			delta_phi = limit_angle(np.deg2rad(roll[fr+1] - roll[fr]));
 			delta_theta = limit_angle(np.deg2rad(pitch[fr+1] - pitch[fr]));
 			delta_psi = limit_angle(np.deg2rad(yaw[fr+1] - yaw[fr]));
-			# This assumes the camera to be on the center-of-gravity:
+			# This assumes the camera to be on the center-of-gravity => change it:
 			R = getRotationMatrix(delta_phi, delta_theta, delta_psi);
 			phis[fr] = delta_phi;
 			thetas[fr] = delta_theta;
@@ -548,11 +547,12 @@ def getFeaturesWithDistance(sample):
 			t[2] = vz[fr];
 			t = t * snapshot_time_interval;
 			speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
-			# it is questionable that X is really necessary:
+			# it is questionable that X is really necessary, one could not send parameters for X and optimize the R, ts so that single triangulations fit as good as possible with all image points:
 			X = getTriangulatedPoints(image_points1, image_points2, R, t, K);
 			# like this it is impossible to determine what rotation to apply to the points
 			# so should we rotate them immediately? Or include more info? Or add empty elements to the vector for non-matched points?
 			for m in range(n_matches):
+				pdb.set_trace();
 				points_world[indices[m]].append(X[m,:]);
 
 			# append rotation:
