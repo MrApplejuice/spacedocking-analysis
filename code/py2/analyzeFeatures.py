@@ -24,9 +24,11 @@ def extractFeaturesFromFile(filename, resampledResolution=(320, 240), showLiveIm
   cv2.namedWindow("video")
   
   targetFilename = None
+  waitForEndKey = True
   if type(showLiveImage) is str:
     targetFilename = showLiveImage
-    showLiveImage = False
+    showLiveImage = True
+    waitForEndKey = False
   
   if re.match('^.*\\.avi$', filename):
     video = cv2.VideoCapture(filename)
@@ -69,7 +71,8 @@ def extractFeaturesFromFile(filename, resampledResolution=(320, 240), showLiveIm
 
     if showLiveImage:
       pl.ioff()
-      pl.show()
+      if waitForEndKey:
+        pl.show()
       
     if not targetFilename is None:
       fig.savefig(targetFilename, dpi=180)
