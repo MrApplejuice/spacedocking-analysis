@@ -119,7 +119,7 @@ def calculateCorrelationStatistics(data):
       bs_sample = [random.choice(sample) for s in sample]
       sampledQuantities[i] = pl.mean(bs_sample)
     sampledQuantities.sort()
-    return sampledQuantities[count * 50 / 100], (sampledQuantities[count * 5 / 100], sampledQuantities[count * 95 / 100])
+    return sampledQuantities[count * 500 / 1000], (sampledQuantities[count * 25 / 1000], sampledQuantities[count * 975 / 1000])
     
   def computeSampleSlope(sample, yfunc):
     xs = [pl.norm(frame["position"][:2]) for frame in sample["frames"]]
