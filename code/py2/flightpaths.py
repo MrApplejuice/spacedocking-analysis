@@ -31,7 +31,10 @@ def plotFlownPaths(data, doShow=True):
   fig.show()
   result.append(fig)
 
-  if doShow:
+  if type(doShow) is str:
+    for n, f in zip(("-far.png", "-near.png"), result):
+      f.savefig(doShow + n, dpi=180)
+  elif doShow:
     show()
     
   return result
