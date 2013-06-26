@@ -589,10 +589,17 @@ def matchData(data1, data2, showOnlyMatchedFeatures=True):
     
   showMatchPlot(data1, data2, matches)
 
-def doStuff():  
-  data = readdata.loadData("data_GDC/output_GDC.txt")
+#############################
+# Create plot of paths flown
+#############################
+from flightpaths import plotFlownPaths
 
-  matchData("data_PKG/feature-rich-scenes/window-close.jpg", "data_PKG/feature-rich-scenes/dishes.jpg")   
+def doStuff():  
+  #data = readdata.loadData("data_GDC/output_GDC.txt")
+  data = readdata.loadData("../data/data-2013.06.11-thesis.txt")
+  plotFlownPaths(data)
+
+  #matchData("data_PKG/feature-rich-scenes/window-close.jpg", "data_PKG/feature-rich-scenes/dishes.jpg")   
   #matchData("data_PKG/feature-rich-scenes/window-far.jpg", "data_PKG/feature-rich-scenes/window-close.jpg")   
   #matchData("data_PKG/feature-rich-scenes/map1.jpg", "data_PKG/feature-rich-scenes/map2.jpg")   
   #matchData("data_PKG/feature-rich-scenes/map1.jpg", "data_PKG/feature-rich-scenes/map1.jpg")   
@@ -607,3 +614,4 @@ def doStuff():
   #sampleData = dbFeaturesToData(selectedSample['features']['features'])
   #matchData(sampleData, "data_GDC/IMG_1063.JPG", showOnlyMatchedFeatures=False)
 
+doStuff()
