@@ -496,7 +496,9 @@ def getFeaturesWithDistance(sample):
 		K = getKdrone2();
 
 	# reconstruct the camera movement and world points from frame to frame:
-	points_world = [[] * n_features];
+	points_world = [[]];
+	for f in range(n_features-1):
+		points_world.append([]);
 	Rotations = [];
 	Translations = [];
 	vx = np.array([0.0] * (n_frames-1));
@@ -524,20 +526,28 @@ def getFeaturesWithDistance(sample):
 		
 		# get the image points that have the right size of memory, and occur in the two currently relevant images (fr, fr+1)
 		# indices are necessary, since triangulation between these frames only gives info on world points with these indices:
+		pdb.set_trace();
 		(image_points1, image_points2, indices) = getImagePointsTwoFrames(FTS_USED, fr, fr+1);
 		n_matches = len(indices);
 
 		if(use_drone_info):
+
+			# This assumes the rotation of the drone to be equal to the rotation of the camera matrix, but this should probably be inversed.
+			# To match the camera convention, y of the drone should become z of the camera, x stays x and z becomes y.
+			# What should happen to roll, pitch, yaw? roll drone -> rotation around z-axis (psi), pitch drone -> rotation around x (roll), yaw drone -> rotation around y-axis (theta)
+
 			# get the rotation from the drone data: 
 			delta_phi = limit_angle(np.deg2rad(roll[fr+1] - roll[fr]));
 			delta_theta = limit_angle(np.deg2rad(pitch[fr+1] - pitch[fr]));
 			delta_psi = limit_angle(np.deg2rad(yaw[fr+1] - yaw[fr]));
 			# This assumes the camera to be on the center-of-gravity => change it:
 			R = getRotationMatrix(delta_phi, delta_theta, delta_psi);
+			
 			phis[fr] = delta_phi;
 			thetas[fr] = delta_theta;
 			psis[fr] = delta_psi;
 			# determine the translation with the help of drone data:
+			
 			vx[fr] = sample['frames'][fr]['velocities'][vx_index] / 1000.0;
 			vy[fr] = sample['frames'][fr]['velocities'][vy_index] / 1000.0;
 			vz[fr] = sample['frames'][fr]['velocities'][vz_index] / 1000.0; # is always zero... but Z is not... and can be used here, since absolute height does not matter
@@ -548,12 +558,16 @@ def getFeaturesWithDistance(sample):
 			t = t * snapshot_time_interval;
 			speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
 			# it is questionable that X is really necessary, one could not send parameters for X and optimize the R, ts so that single triangulations fit as good as possible with all image points:
+			# also, R and t should be translated to a camera definition:
 			X = getTriangulatedPoints(image_points1, image_points2, R, t, K);
 			# like this it is impossible to determine what rotation to apply to the points
 			# so should we rotate them immediately? Or include more info? Or add empty elements to the vector for non-matched points?
-			for m in range(n_matches):
-				pdb.set_trace();
-				points_world[indices[m]].append(X[m,:]);
+			for f in range(n_features):
+				try:
+					ii = indices.index(f);
+					points_world[f].append(X[ii][:3]);
+				except ValueError:
+					points_world[f].append(np.array([]));
 
 			# append rotation:
 			Rotations.append(R);
@@ -604,13 +618,17 @@ def getFeaturesWithDistance(sample):
 		for ff in range(matrix_ind):
 			Rotation_cam1 = np.dot(Rotation_cam1, Rs[ff]);
 		# the translation is expressed with respect to the first camera of the current pair;
-		translation_cam1 = np.dot(Rotation_cam1, Ts[matrix_ind]);
+		translation_cam1 = np.dot(Rotation_cam1, Translations[matrix_ind]);
 		Ts.append(translation_cam1);
 		# the same goes for the world points:
 		n_world_points = len(X);
 		X_cam1 = [];
 		for wp in range(n_world_points):
-			X_cam1.append(np.dot(Rotation_cam1, points_world[matrix_ind][wp]));
+			# rotate the triangulated point if it was matched in the current views:
+			if(len(points_world[matrix_ind][wp]) > 0):
+				X_cam1.append(np.dot(Rotation_cam1, points_world[matrix_ind][wp]));
+			else:
+				X_cam1.append(np.array([]));
 		pw.append(X_cam1);
 		# then multiply the rotation with the rotation to the second camera of the pair:
 		Rotation_cam1 = np.dot(Rotation_cam1, Rotations[matrix_ind]);
