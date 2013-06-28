@@ -462,7 +462,7 @@ def testVisualOdometry(n_points=100):
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
 
-def test3DReconstructionParrot(n_frames=5, n_wp=30):
+def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0):
 	""" Method to test the 3D-reconstruction for AstroDrone. It creates a drone movement
 			consisting of n_frames camera poses, and creates n_wp world points. It projects the points 
 			into the images, introducing some noise and missing observations.
@@ -514,9 +514,10 @@ def test3DReconstructionParrot(n_frames=5, n_wp=30):
 	vx = np.array([0.0] * n_frames);
 	vy = np.array([0.0] * n_frames);
 	vz = np.array([0.0] * n_frames);
-	# little sideward motion, considerable forward motion, in m/s:
-	bvx = 0.1 * (np.random.rand(1) * 2.0 - 1.0);
-	bvy = 0.25 + np.random.rand(1) * 0.5;
+	if(bvx == 0.0 and bvy == 0.0):
+		# little sideward motion, considerable forward motion, in m/s:
+		bvx = 0.1 * (np.random.rand(1) * 2.0 - 1.0);
+		bvy = 0.25 + np.random.rand(1) * 0.5;
 	# add variations and multiply with 1000.0 (mm / s):
 	for fr in range(n_frames):
 		vx[fr] = bvx * 1000.0;
@@ -533,8 +534,7 @@ def test3DReconstructionParrot(n_frames=5, n_wp=30):
 		points_world[p, :] = size * (np.random.rand(1,3)*2-np.ones([1,3])) + transl;
 
 	# 3) translate the drone coordinates to camera coordinates 
-	pdb.set_trace();
-	(Rotations, Translations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz);
+	(Rotations, Translations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
 
 	# 4) project the world points into the images
 	IPs = [];
@@ -555,13 +555,29 @@ def test3DReconstructionParrot(n_frames=5, n_wp=30):
 
 		IPs.append(image_points);
 
-		if(graphics):
-			# Show the points in the image over time:
-			pl.figure();
-			pl.plot(image_points[:,0], image_points[:,1], 'x');
-			pl.show();
 
+	if(graphics):
+		showPointsOverTime(IPs);
+
+def showPointsOverTime(IPs):
+	""" Shows image points over time. One world point is tracked and shown as a line.
+	"""
 		
+	# create the figure:
+	pl.figure();
+	pl.hold(True)
+	n_frames = len(IPs);
+	n_points = len(IPs[0]);
+	for p in range(n_points):
+		x = np.array([0.0] * n_frames);
+		y = np.array([0.0] * n_frames);
+		for fr in range(n_frames):
+			x[fr] = IPs[fr][p][0][0];
+			y[fr] = IPs[fr][p][0][1];
+		pl.plot(x, y);
+		pl.plot(x[-1], y[-1], 'or');
+	
+	pl.show();
 
 def limit_angle(angle):
 	""" Makes sure that the angle (in rad) is in the interval [-pi, pi].
@@ -575,57 +591,55 @@ def limit_angle(angle):
 
 	return angle;
 
-def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz):
+def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval):
 	""" This method takes the Euler angles and velocities from the AR drone
 			and translates them to "camera" rotations and translations (actually
 			translations and rotations of the world points).
 	"""
 
-		# We have n_frames with for each frame the velocity and Euler angles
-		# This has to be translated to (n_frames-1) position / attitude changes, 
-		# with the first camera being at (0,0,0) and being level.
-		n_frames = len(roll);
+	# We have n_frames with for each frame the velocity and Euler angles
+	# This has to be translated to (n_frames-1) position / attitude changes, 
+	# with the first camera being at (0,0,0) and being level.
+	n_frames = len(roll);
 
-		Rotations = [];
-		Translations = [];
+	Rotations = [];
+	Translations = [];
+	
+	# first camera:
+	# only valid if if yaw[0]. roll[0], pitch[0] are 0
+	t1 = np.zeros([3,1]);
+	Translations.append(t1);
+	R1 = np.eye(3);
+	Rotations.append(R1);		
+
+	for fr in range(n_frames-1):
+	
+		# get the rotation from the drone data: 
+		delta_phi = limit_angle(np.deg2rad(roll[fr+1] - roll[fr]));
+		delta_theta = limit_angle(np.deg2rad(pitch[fr+1] - pitch[fr]));
+		delta_psi = limit_angle(np.deg2rad(yaw[fr+1] - yaw[fr]));
+
+		# convert them to rotations of world points around the camera's X, Y, Z axes:
+		(Rx, Ry, Rz) = convertAnglesFromDroneToCamera(delta_phi, delta_theta, delta_psi);
+
+		# get the rotation matrix:
+		R = getRotationMatrix(Rx, Ry, Rz);
+
+		# append the rotation matrix:
+		Rotations.append(R);
+
+		# get the translation from the drone data:
+		t = np.zeros([3,1]);
+		t[0] = vx[fr] / 1000.0;
+		t[1] = vy[fr] / 1000.0;
+		t[2] = vz[fr] / 1000.0;
+		t = t * snapshot_time_interval;
 		
-		# first camera:
-		# only valid if if yaw[0]. roll[0], pitch[0] are 0
-		t1 = np.zeros([3,1]);
-		Translations.append(t1);
-		R1 = np.eye(3);
-		Rotations.append(R1);		
-
-		pdb.set_trace();
-
-		for fr in range(n_frames-1):
-		
-			# get the rotation from the drone data: 
-			delta_phi = limit_angle(np.deg2rad(roll[fr+1] - roll[fr]));
-			delta_theta = limit_angle(np.deg2rad(pitch[fr+1] - pitch[fr]));
-			delta_psi = limit_angle(np.deg2rad(yaw[fr+1] - yaw[fr]));
-
-			# convert them to rotations of world points around the camera's X, Y, Z axes:
-			(Rx, Ry, Rz) = convertAnglesFromDroneToCamera(delta_phi, delta_theta, delta_psi);
-
-			# get the rotation matrix:
-			R = getRotationMatrix(Rx, Ry, Rz);
-
-			# append the rotation matrix:
-			Rotations.append(R);
-
-			# get the translation from the drone data:
-			t = np.zeros([3,1]);
-			t[0] = vx[fr] / 1000.0;
-			t[1] = vy[fr] / 1000.0;
-			t[2] = vz[fr] / 1000.0;
-			t = t * snapshot_time_interval;
+		# convert the drone translation to the translation of world points in the camera's view:
+		t_camera = convertTranslationFromDroneToCamera(t);
 			
-			# convert the drone translation to the translation of world points in the camera's view:
-			t_camera = convertTranslationFromDroneToCamera(t);
-				
-			# append the translation vector:
-			Translations.append(t_camera);
+		# append the translation vector:
+		Translations.append(t_camera);
 
 	return (Rotations, Translations);
 
@@ -655,8 +669,8 @@ def convertTranslationFromDroneToCamera(t):
 	# This results in the following mapping:
 	t_camera = np.zeros([3,1]);
 	t_camera[0,0] = -t[0,0];
-	t_camera[1,0] = -t[0,2];
-	t_camera[2,0] = -t[0,1];
+	t_camera[1,0] = -t[2,0];
+	t_camera[2,0] = -t[1,0];
 
 	return t_camera;
 
@@ -727,7 +741,7 @@ def getRotationMatrix(Rx, Ry, Rz):
 
 	# multiply the matrices:
 	# first x, then y, then z:
-	R2 = np.dot(R_Rz, np.dot(R_Ry, R_Rx));
+	R = np.dot(R_Rz, np.dot(R_Ry, R_Rx));
 
 	return R;
 
