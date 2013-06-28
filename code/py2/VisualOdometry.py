@@ -371,8 +371,6 @@ def testVisualOdometry(n_points=100):
 				index_t = it;
 				print 'ir, it = %d, %d' % (ir, it)
 
-	
-
 	P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
 	R2_est = R2s[index_r]; t2_est = t2s[index_t];
 
@@ -462,7 +460,7 @@ def testVisualOdometry(n_points=100):
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
 
-def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0):
+def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_roll=0.0, b_pitch =0.0, b_yaw = 0.0):
 	""" Method to test the 3D-reconstruction for AstroDrone. It creates a drone movement
 			consisting of n_frames camera poses, and creates n_wp world points. It projects the points 
 			into the images, introducing some noise and missing observations.
@@ -506,9 +504,9 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0):
 	yaw = np.array([0.0] * n_frames);
 	pitch = np.array([0.0] * n_frames);
 	for fr in range(n_frames):
-		roll[fr] = 0.0;
-		yaw[fr] = 0.0;
-		pitch[fr] = 0.0;
+		roll[fr] = 0.0 + b_roll * fr;
+		yaw[fr] = 0.0 + b_yaw * fr;
+		pitch[fr] = 0.0 + b_pitch * fr;
 
 	# basic movement:
 	vx = np.array([0.0] * n_frames);
@@ -648,13 +646,14 @@ def convertAnglesFromDroneToCamera(delta_phi, delta_theta, delta_psi):
 	"""
 	
 	# There are two differences:
-	# (1) the drone coordinate frame is right-handed
+	# (1) the drone coordinate frame is right-handed while the camera is left-handed
 	# (2) the axes have different names
+	# (3) the angles are of the drone, while the "camera" angles actually indicate how the world points rotate (* -1 here)
 
 	# This results in the following mapping:
-	Rx = -delta_theta; 
-	Ry = -delta_psi;
-	Rz = -delta_phi;
+	Rx = delta_theta; 
+	Ry = delta_psi;
+	Rz = delta_phi;
 
 	return (Rx, Ry, Rz);
 
@@ -712,10 +711,10 @@ def flatten(X):
 
 def getRotationMatrix(Rx, Ry, Rz):
 	""" Create rotation matrix R on the basis of Rx, Ry, Rz, in the left-handed camera coordinate system.
+			Takes radians.
 	"""
 	
 	# create rotation matrix:
-	Rx = np.deg2rad(Rx);
 	R_Rx = np.zeros([3,3]);
 	R_Rx[0,0] = 1;
 	R_Rx[1,1] = np.cos(Rx);
@@ -723,7 +722,6 @@ def getRotationMatrix(Rx, Ry, Rz):
 	R_Rx[2,1] = np.sin(Rx);
 	R_Rx[2,2] = np.cos(Rx);
 
-	Ry = np.deg2rad(Ry);
 	R_Ry = np.zeros([3,3]);
 	R_Ry[1,1] = 1;
 	R_Ry[0,0] = np.cos(Ry);
@@ -731,7 +729,6 @@ def getRotationMatrix(Rx, Ry, Rz):
 	R_Ry[0,2] = np.sin(Ry);
 	R_Ry[2,2] = np.cos(Ry);
 
-	Rz = np.deg2rad(Rz);
 	R_Rz = np.zeros([3,3]);
 	R_Rz[0,0] = np.cos(Rz);
 	R_Rz[0,1] = -np.sin(Rz);
