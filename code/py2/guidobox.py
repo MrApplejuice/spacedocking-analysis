@@ -664,15 +664,6 @@ def getFeaturesWithDistance(sample):
 	
 	return (distances, distances_TTC);
 		
-def limit_angle(angle):
-	# angle will be in [-pi, pi]
-	while(angle >= np.pi):
-		angle -= 2*np.pi;
-
-	while(angle < -np.pi):
-		angle += 2*np.pi;
-
-	return angle;
 
 def isDrone1(device_string):
 	if(device_string.find('ARDrone 2') == -1):

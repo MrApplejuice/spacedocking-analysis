@@ -149,14 +149,14 @@ def getKdrone2():
 	K[2,2] = 1.0;
 	return K;
 
-def testCoordinateSystem(X = 0.0, Y = 0.0, Z = 5.0, tx = 0.0, ty = 0.0, tz = 0.0, phi = 0.0, theta = 0.0, psi = 0.0):
+def testCoordinateSystem(X = 0.0, Y = 0.0, Z = 5.0, tx = 0.0, ty = 0.0, tz = 0.0, Rx = 0.0, Ry = 0.0, Rz = 0.0):
 	""" Tests whether the OpenCV coordinate system is left-handed with Z to the front, 
 			X to the right, and Y up.
 	"""
 	
 	print '(X,Y,Z) = (%f, %f, %f)' % (X,Y,Z);
 	print '(tx,ty,tz) = (%f, %f, %f)' % (tx,ty,tz);
-	print '(phi,theta,psi) = (%f, %f, %f)' % (phi,theta,psi);
+	print '(Rx,Ry,Rz) = (%f, %f, %f)' % (Rx,Ry,Rz);
 
 	# get calibration matrix:
 	K = getKdrone1();
@@ -177,35 +177,35 @@ def testCoordinateSystem(X = 0.0, Y = 0.0, Z = 5.0, tx = 0.0, ty = 0.0, tz = 0.0
 	transl[2] = tz;
 
 	# create rotation matrix:
-	phi = np.deg2rad(phi);
-	R_phi = np.zeros([3,3]);
-	R_phi[0,0] = 1;
-	R_phi[1,1] = np.cos(phi);
-	R_phi[1,2] = -np.sin(phi);
-	R_phi[2,1] = np.sin(phi);
-	R_phi[2,2] = np.cos(phi);
+	Rx = np.deg2rad(Rx);
+	R_Rx = np.zeros([3,3]);
+	R_Rx[0,0] = 1;
+	R_Rx[1,1] = np.cos(Rx);
+	R_Rx[1,2] = -np.sin(Rx);
+	R_Rx[2,1] = np.sin(Rx);
+	R_Rx[2,2] = np.cos(Rx);
 
-	theta = np.deg2rad(theta);
-	R_theta = np.zeros([3,3]);
-	R_theta[1,1] = 1;
-	R_theta[0,0] = np.cos(theta);
-	R_theta[2,0] = -np.sin(theta);
-	R_theta[0,2] = np.sin(theta);
-	R_theta[2,2] = np.cos(theta);
+	Ry = np.deg2rad(Ry);
+	R_Ry = np.zeros([3,3]);
+	R_Ry[1,1] = 1;
+	R_Ry[0,0] = np.cos(Ry);
+	R_Ry[2,0] = -np.sin(Ry);
+	R_Ry[0,2] = np.sin(Ry);
+	R_Ry[2,2] = np.cos(Ry);
 
-	psi = np.deg2rad(psi);
-	R_psi = np.zeros([3,3]);
-	R_psi[0,0] = np.cos(psi);
-	R_psi[0,1] = -np.sin(psi);
-	R_psi[1,0] = np.sin(psi);
-	R_psi[1,1] = np.cos(psi);
-	R_psi[2,2] = 1;
+	Rz = np.deg2rad(Rz);
+	R_Rz = np.zeros([3,3]);
+	R_Rz[0,0] = np.cos(Rz);
+	R_Rz[0,1] = -np.sin(Rz);
+	R_Rz[1,0] = np.sin(Rz);
+	R_Rz[1,1] = np.cos(Rz);
+	R_Rz[2,2] = 1;
 
 	# multiply the matrices:
 	# what order?
 	# first x, then y, then z:
-	R2 = np.dot(R_psi, np.dot(R_theta, R_phi));
-	# R2 = np.dot(R_theta, np.dot(R_phi, R_psi));
+	R2 = np.dot(R_Rz, np.dot(R_Ry, R_Rx));
+	# R2 = np.dot(R_Ry, np.dot(R_Rx, R_Rz));
 	print 'R = '
 	printRotationMatrix(R2);
 
@@ -519,8 +519,106 @@ def test3DReconstructionParrot(n_frames=5, n_wp=30):
 		points_world[p, :] = size * (np.random.rand(1,3)*2-np.ones([1,3])) + transl;
 
 	# 3) translate the drone coordinates to camera coordinates 
-		
+	# make a function for this	
+	(Rotations, Translations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz);
 
+	# 4) project the world points into the images
+	
+
+def limit_angle(angle):
+	""" Makes sure that the angle (in rad) is in the interval [-pi, pi].
+	"""
+	# angle will be in [-pi, pi]
+	while(angle >= np.pi):
+		angle -= 2*np.pi;
+
+	while(angle < -np.pi):
+		angle += 2*np.pi;
+
+	return angle;
+
+def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz):
+	""" This method takes the Euler angles and velocities from the AR drone
+			and translates them to "camera" rotations and translations (actually
+			translations and rotations of the world points).
+	"""
+
+		# We have n_frames with for each frame the velocity and Euler angles
+		# This has to be translated to (n_frames-1) position / attitude changes, 
+		# with the first camera being at (0,0,0) and being level.
+		n_frames = len(roll);
+
+		Rotations = [];
+		Translations = [];
+		
+		# first camera:
+		t1 = np.zeros([3,1]);
+		Translations.append(t1);
+		R1 = np.eye(3);
+		Rotations.append(R1);		
+
+
+		for fr in range(n_frames-1):
+		
+			# get the rotation from the drone data: 
+			delta_phi = limit_angle(np.deg2rad(roll[fr+1] - roll[fr]));
+			delta_theta = limit_angle(np.deg2rad(pitch[fr+1] - pitch[fr]));
+			delta_psi = limit_angle(np.deg2rad(yaw[fr+1] - yaw[fr]));
+
+			# convert them to rotations of world points around the camera's X, Y, Z axes:
+			(Rx, Ry, Rz) = convertAnglesFromDroneToCamera(delta_phi, delta_theta, delta_psi);
+
+			# get the rotation matrix:
+			R = getRotationMatrix(Rx, Ry, Rz);
+
+			# append the rotation matrix:
+			Rotations.append(R);
+
+			# get the translation from the drone data:
+			t = np.zeros([3,1]);
+			t[0] = vx[fr];
+			t[1] = vy[fr];
+			t[2] = vz[fr];
+			t = t * snapshot_time_interval;
+			
+			# convert the drone translation to the translation of world points in the camera's view:
+			t_camera = convertTranslationFromDroneToCamera(t);
+				
+			# append the translation vector:
+			Translations.append(t_camera);
+
+	return (Rotations, Translations);
+
+def convertAnglesFromDroneToCamera(delta_phi, delta_theta, delta_psi):
+	""" Convert the angles from the drone to the rotation of the world points with respect to the camera.
+	"""
+	
+	# There are two differences:
+	# (1) the drone coordinate frame is right-handed
+	# (2) the axes have different names
+
+	# This results in the following mapping:
+	Rx = -delta_theta; 
+	Ry = -delta_psi;
+	Rz = -delta_phi;
+
+	return (Rx, Ry, Rz);
+
+def convertTranslationFromDroneToCamera(t):
+	""" Convert	the drone translation t to the translation of the world points in the camera.
+	"""
+
+	# There are two differences:
+	# (1) The drone's axes are differently labeled x, y, z
+	# (2) The world point motion is opposite of the drone's motion
+
+	# This results in the following mapping:
+	t_camera = np.zeros([3,1]);
+	t_camera[0,0] = -t[0,0];
+	t_camera[1,0] = -t[0,2];
+	t_camera[2,0] = -t[0,1];
+
+	return t_camera;
 
 def getTriangulatedPoints(image_points1, image_points2, R2, t2, K):
 
@@ -558,33 +656,40 @@ def flatten(X):
 	Y = [x[0] for x in X];
 	return Y;
 
-def getRotationMatrix(phi, theta, psi):
-		""" Create rotation matrix R on the basis of phi, theta, psi 
-		"""
-		R_phi = np.zeros([3,3]);
-		R_phi[0,0] = 1;
-		R_phi[1,1] = np.cos(phi);
-		R_phi[1,2] = np.sin(phi);
-		R_phi[2,1] = -np.sin(phi);
-		R_phi[2,2] = np.cos(phi);
+def getRotationMatrix(Rx, Ry, Rz):
+	""" Create rotation matrix R on the basis of Rx, Ry, Rz, in the left-handed camera coordinate system.
+	"""
+	
+	# create rotation matrix:
+	Rx = np.deg2rad(Rx);
+	R_Rx = np.zeros([3,3]);
+	R_Rx[0,0] = 1;
+	R_Rx[1,1] = np.cos(Rx);
+	R_Rx[1,2] = -np.sin(Rx);
+	R_Rx[2,1] = np.sin(Rx);
+	R_Rx[2,2] = np.cos(Rx);
 
-		R_theta = np.zeros([3,3]);
-		R_theta[1,1] = 1;
-		R_theta[0,0] = np.cos(theta);
-		R_theta[2,0] = -np.sin(theta);
-		R_theta[0,2] = np.sin(theta);
-		R_theta[2,2] = np.cos(theta);
+	Ry = np.deg2rad(Ry);
+	R_Ry = np.zeros([3,3]);
+	R_Ry[1,1] = 1;
+	R_Ry[0,0] = np.cos(Ry);
+	R_Ry[2,0] = -np.sin(Ry);
+	R_Ry[0,2] = np.sin(Ry);
+	R_Ry[2,2] = np.cos(Ry);
 
-		R_psi = np.zeros([3,3]);
-		R_psi[0,0] = np.cos(psi);
-		R_psi[0,1] = np.sin(psi);
-		R_psi[1,0] = -np.sin(psi);
-		R_psi[1,1] = np.cos(psi);
-		R_psi[2,2] = 1;
+	Rz = np.deg2rad(Rz);
+	R_Rz = np.zeros([3,3]);
+	R_Rz[0,0] = np.cos(Rz);
+	R_Rz[0,1] = -np.sin(Rz);
+	R_Rz[1,0] = np.sin(Rz);
+	R_Rz[1,1] = np.cos(Rz);
+	R_Rz[2,2] = 1;
 
-		R = np.dot(R_psi, np.dot(R_theta, R_phi));
+	# multiply the matrices:
+	# first x, then y, then z:
+	R2 = np.dot(R_Rz, np.dot(R_Ry, R_Rx));
 
-		return R;
+	return R;
 
 def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 	"""	calculateReprojectionError takes a number of rotation and translation matrices, 
