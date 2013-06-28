@@ -536,16 +536,20 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 
 	# 4) project the world points into the images
 	IPs = [];
+	R = np.eye(3);
+	transl = np.zeros([3,1]);
 	for fr in range(n_frames):
 
+		# rotations and translations should still be made incremental:		
+
 		# rotation:		
-		R = Rotations[fr];
+		R = np.dot(Rotations[fr], R);
 		# get the vector form of the rotation:
 		rvec = cv2.Rodrigues(R);
 		rvec = rvec[0];
 
 		# get the translation:
-		transl = Translations[fr];
+		transl = Translations[fr] + transl;
 
 		# project the world points in the cameras:
 		result = cv2.projectPoints(points_world, rvec, transl, K, distCoeffs);
@@ -556,6 +560,27 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 
 	if(graphics):
 		showPointsOverTime(IPs);
+
+	# *************************
+	# MEASUREMENT / ESTIMATION:
+	# *************************
+
+	# 5) induce some noise in movement perception / world point perception
+
+	# noise on image points:
+	stv = 0.3;
+	for fr in range(n_frames):
+		for p in range(n_points):
+			noise = stv * np.random.randn();
+			IPs[fr][p][0][0] += noise;
+			noise = stv * np.random.randn();
+			IPs[fr][p][0][1] += noise;
+
+	# no noise on movements and rotations yet
+	
+	# 6) reconstruct with the algorithm
+	(MRotations, MTranslations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
+	
 
 def showPointsOverTime(IPs):
 	""" Shows image points over time. One world point is tracked and shown as a line.
@@ -572,7 +597,7 @@ def showPointsOverTime(IPs):
 		for fr in range(n_frames):
 			x[fr] = IPs[fr][p][0][0];
 			y[fr] = IPs[fr][p][0][1];
-		pl.plot(x, y);
+		pl.plot(x, y, 'x-');
 		pl.plot(x[-1], y[-1], 'or');
 	
 	pl.show();
