@@ -5,6 +5,7 @@ import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as pl
 from evolveReconstruction import *
+# from guidobox import *
 
 def performStructureFromMotion(image_points1, image_points2, K, W, H):
 	""" Performs structure from motion on the basis of image matches (image_points1, image_points2, both Nx2),
@@ -147,6 +148,89 @@ def getKdrone2():
 	K[1,2] = 1.37808365e+002;
 	K[2,2] = 1.0;
 	return K;
+
+def testCoordinateSystem(X = 0.0, Y = 0.0, Z = 5.0, tx = 0.0, ty = 0.0, tz = 0.0, phi = 0.0, theta = 0.0, psi = 0.0):
+	""" Tests whether the OpenCV coordinate system is left-handed with Z to the front, 
+			X to the right, and Y up.
+	"""
+	
+	print '(X,Y,Z) = (%f, %f, %f)' % (X,Y,Z);
+	print '(tx,ty,tz) = (%f, %f, %f)' % (tx,ty,tz);
+	print '(phi,theta,psi) = (%f, %f, %f)' % (phi,theta,psi);
+
+	# get calibration matrix:
+	K = getKdrone1();
+	print 'K = '
+	printRotationMatrix(K);
+
+	# create world point:
+	n_points = 1;
+	points_world = np.zeros([n_points, 3]);
+	points_world[0,0] = X;
+	points_world[0,1] = Y;
+	points_world[0,2] = Z;
+
+	# create translation vector:
+	transl = np.array([0.0]*3);
+	transl[0] = tx;
+	transl[1] = ty;
+	transl[2] = tz;
+
+	# create rotation matrix:
+	phi = np.deg2rad(phi);
+	R_phi = np.zeros([3,3]);
+	R_phi[0,0] = 1;
+	R_phi[1,1] = np.cos(phi);
+	R_phi[1,2] = -np.sin(phi);
+	R_phi[2,1] = np.sin(phi);
+	R_phi[2,2] = np.cos(phi);
+
+	theta = np.deg2rad(theta);
+	R_theta = np.zeros([3,3]);
+	R_theta[1,1] = 1;
+	R_theta[0,0] = np.cos(theta);
+	R_theta[2,0] = -np.sin(theta);
+	R_theta[0,2] = np.sin(theta);
+	R_theta[2,2] = np.cos(theta);
+
+	psi = np.deg2rad(psi);
+	R_psi = np.zeros([3,3]);
+	R_psi[0,0] = np.cos(psi);
+	R_psi[0,1] = -np.sin(psi);
+	R_psi[1,0] = np.sin(psi);
+	R_psi[1,1] = np.cos(psi);
+	R_psi[2,2] = 1;
+
+	# multiply the matrices:
+	# what order?
+	# first x, then y, then z:
+	R2 = np.dot(R_psi, np.dot(R_theta, R_phi));
+	# R2 = np.dot(R_theta, np.dot(R_phi, R_psi));
+	print 'R = '
+	printRotationMatrix(R2);
+
+	# print the translated / rotated point:
+	C = np.zeros([3,4]);
+	C[:,:3] = R2;
+	C[:,3] = transl;
+	PW = np.ones([4,1]);
+	for c in range(3):
+		PW[c,0] = points_world[0,c];
+	transformed_X = np.dot(C, PW);
+	print 'transformed world point: (%f, %f, %f)' % (transformed_X[0], transformed_X[1], transformed_X[2]);
+
+	# get the vector form of the rotation:
+	rvec2 = cv2.Rodrigues(R2);
+	rvec2 = rvec2[0];
+
+	# distortion coefficients:
+	distCoeffs = np.zeros([4]); 
+
+	# project the world points in the cameras:
+	result = cv2.projectPoints(points_world, rvec2, transl, K, distCoeffs);	
+	image_points = result[0];
+
+	print 'image point = %f, %f' % (image_points[0][0][0], image_points[0][0][1])
 
 def testVisualOdometry(n_points=100):
 
@@ -377,6 +461,66 @@ def testVisualOdometry(n_points=100):
 
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
+
+def test3DReconstructionParrot(n_frames=5, n_wp=30):
+	""" Method to test the 3D-reconstruction for AstroDrone. It creates a drone movement
+			consisting of n_frames camera poses, and creates n_wp world points. It projects the points 
+			into the images, introducing some noise and missing observations.
+			
+			Subsequently, it applies the algorithm for reconstruction and checks how well it
+			works. 
+	"""
+
+	# Algorithm outline:
+	# 1) create movement and poses in drone coordinates
+	# 2) construct the world
+	# 3) translate the drone coordinates to camera coordinates 
+	# 4) project the world points into the images
+	# 5) induce some noise in movement perception / world point perception
+	# 6) reconstruct with the algorithm
+
+	# time in between snap shots
+	snapshot_time_interval = 0.25;
+
+
+	# 1) create movement and poses in drone coordinates
+	# We make this similar to the way in which data arrives from the AstroDrone database:
+
+	# The drone uses a right-handed coordinate system with x to the right and y to the front.
+	# roll, yaw, pitch is all 0.0 when level and straight ahead, set them in degrees:
+	roll = np.array([0.0] * n_frames);
+	yaw = np.array([0.0] * n_frames);
+	pitch = np.array([0.0] * n_frames);
+	for fr in range(n_frames):
+		roll[fr] = 0.0;
+		yaw[fr] = 0.0;
+		pitch[fr] = 0.0;
+
+	# basic movement:
+	vx = np.array([0.0] * n_frames);
+	vy = np.array([0.0] * n_frames);
+	vz = np.array([0.0] * n_frames);
+	# little sideward motion, considerable forward motion, in m/s:
+	bvx = 0.1 * (np.random.rand(1) * 2.0 - 1.0);
+	bvy = 0.25 + np.random.rand(1) * 0.5;
+	# add variations and multiply with 1000.0 (mm / s):
+	for fr in range(n_frames):
+		vx[fr] = bvx * 1000.0;
+		vy[fr] = bvy * 1000.0;
+			
+
+	# 2) construct the world
+	size = 2;
+	distance = 5;
+	transl = np.zeros([1,3]);
+	transl[0,2] = distance; # is Z in the direction of the principal axis?
+	points_world = np.zeros([n_points, 3]);
+	for p in range(n_points):
+		points_world[p, :] = size * (np.random.rand(1,3)*2-np.ones([1,3])) + transl;
+
+	# 3) translate the drone coordinates to camera coordinates 
+		
+
 
 def getTriangulatedPoints(image_points1, image_points2, R2, t2, K):
 
