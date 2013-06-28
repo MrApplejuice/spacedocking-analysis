@@ -472,16 +472,30 @@ def test3DReconstructionParrot(n_frames=5, n_wp=30):
 	"""
 
 	# Algorithm outline:
+	#
+	# GROUND-TRUTH:
 	# 1) create movement and poses in drone coordinates
 	# 2) construct the world
 	# 3) translate the drone coordinates to camera coordinates 
 	# 4) project the world points into the images
+	#
+	# MEASUREMENT / ESTIMATION:
 	# 5) induce some noise in movement perception / world point perception
 	# 6) reconstruct with the algorithm
 
-	# time in between snap shots
+	graphics = True;
+
+	# *************
+	# GROUND-TRUTH:
+	# *************
+
+	# time in between snap shots:
 	snapshot_time_interval = 0.25;
 
+	# camera calibration matrix:
+	K = getKdrone1();
+	# distortion coefficients:
+	distCoeffs = np.zeros([1,4]); 
 
 	# 1) create movement and poses in drone coordinates
 	# We make this similar to the way in which data arrives from the AstroDrone database:
@@ -519,11 +533,35 @@ def test3DReconstructionParrot(n_frames=5, n_wp=30):
 		points_world[p, :] = size * (np.random.rand(1,3)*2-np.ones([1,3])) + transl;
 
 	# 3) translate the drone coordinates to camera coordinates 
-	# make a function for this	
+	pdb.set_trace();
 	(Rotations, Translations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz);
 
 	# 4) project the world points into the images
-	
+	IPs = [];
+	for fr in range(n_frames):
+
+		# rotation:		
+		R = Rotations[fr];
+		# get the vector form of the rotation:
+		rvec = cv2.Rodrigues(R);
+		rvec = rvec[0];
+
+		# get the translation:
+		transl = Translations[fr];
+
+		# project the world points in the cameras:
+		result = cv2.projectPoints(points_world, rvec, transl, K, distCoeffs);
+		image_points = result[0];
+
+		IPs.append(image_points);
+
+		if(graphics):
+			# Show the points in the image over time:
+			pl.figure();
+			pl.plot(image_points[:,0], image_points[:,1], 'x');
+			pl.show();
+
+		
 
 def limit_angle(angle):
 	""" Makes sure that the angle (in rad) is in the interval [-pi, pi].
@@ -552,11 +590,13 @@ def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz):
 		Translations = [];
 		
 		# first camera:
+		# only valid if if yaw[0]. roll[0], pitch[0] are 0
 		t1 = np.zeros([3,1]);
 		Translations.append(t1);
 		R1 = np.eye(3);
 		Rotations.append(R1);		
 
+		pdb.set_trace();
 
 		for fr in range(n_frames-1):
 		
@@ -576,9 +616,9 @@ def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz):
 
 			# get the translation from the drone data:
 			t = np.zeros([3,1]);
-			t[0] = vx[fr];
-			t[1] = vy[fr];
-			t[2] = vz[fr];
+			t[0] = vx[fr] / 1000.0;
+			t[1] = vy[fr] / 1000.0;
+			t[2] = vz[fr] / 1000.0;
 			t = t * snapshot_time_interval;
 			
 			# convert the drone translation to the translation of world points in the camera's view:
