@@ -531,25 +531,45 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	for p in range(n_points):
 		points_world[p, :] = size * (np.random.rand(1,3)*2-np.ones([1,3])) + transl;
 
-	# 3) translate the drone coordinates to camera coordinates 
+	# 3) translate the drone coordinates to camera coordinates
 	(Rotations, Translations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
 
 	# 4) project the world points into the images
 	IPs = [];
 	R = np.eye(3);
 	transl = np.zeros([3,1]);
+	
+	if(graphics):
+		# make a figure to plot positions and camera axes:
+		pl.figure();
+		pl.hold(True);
+		camera_axis = np.array([0,0,0.1]);
+		
 	for fr in range(n_frames):
 
 		# rotations and translations should still be made incremental:		
-
+		
+		# some nasty questions:
+		# a) first translate and then rotate?
+		# b) do vx, vy, vz give velocities in body coordinates? Or in the inertial reference frame?
+		
+		# get the translation:
+		transl = np.dot(np.linalg.inv(R), Translations[fr]) + transl;
+		
 		# rotation:		
 		R = np.dot(Rotations[fr], R);
 		# get the vector form of the rotation:
 		rvec = cv2.Rodrigues(R);
 		rvec = rvec[0];
 
-		# get the translation:
-		transl = Translations[fr] + transl;
+		if(graphics):
+			# plot camera position and camera axis in the X,Z-plane:
+			# since translations / rotations are of world points, we have to negate them /
+			# invert them to get the camera translations / rotations:
+			pl.plot(-transl[0], -transl[2], 'x');
+			cR = np.dot(np.linalg.inv(R), camera_axis)
+			pl.plot([-transl[0], -transl[0]+cR[0]], [-transl[2], -transl[2]+cR[2]]);
+			
 
 		# project the world points in the cameras:
 		result = cv2.projectPoints(points_world, rvec, transl, K, distCoeffs);
@@ -557,8 +577,11 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 
 		IPs.append(image_points);
 
-
 	if(graphics):
+		# enforce equal axes
+		pl.title('Positions and orientations');
+		pl.show();
+		
 		showPointsOverTime(IPs);
 
 	# *************************
@@ -670,7 +693,7 @@ def convertAnglesFromDroneToCamera(delta_phi, delta_theta, delta_psi):
 	""" Convert the angles from the drone to the rotation of the world points with respect to the camera.
 	"""
 	
-	# There are two differences:
+	# There are three differences:
 	# (1) the drone coordinate frame is right-handed while the camera is left-handed
 	# (2) the axes have different names
 	# (3) the angles are of the drone, while the "camera" angles actually indicate how the world points rotate (* -1 here)
