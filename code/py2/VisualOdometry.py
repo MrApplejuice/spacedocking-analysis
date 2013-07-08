@@ -643,7 +643,6 @@ def estimateWorldPoints(Rotations, Translations, IPs, K):
 			R2 = Rotations[j];
 			t2 = Translations[j];
 			
-			pdb.set_trace();
 			# get common points:
 			(image_points1, image_points2, indices) = getCommonPoints(IPs, i, j, n_points);
 			
@@ -655,12 +654,12 @@ def estimateWorldPoints(Rotations, Translations, IPs, K):
 				WP[indices[ind]].append(W[ind]);
 	
 	# average over the coordinates to get an estimate:
-	X = np.zeros(n_points, 3);
+	X = np.zeros([n_points, 3]);
 	for p in range(n_points):
 		n_coords = len(WP[p]);
-		C = np.zeros(1, 3);
+		C = np.zeros([1, 3]);
 		for c in range(n_coords):
-			C += WP[p][c];
+			C += WP[p][c][:3];
 		C /= n_coords;
 		X[p, :] = C;
 	
