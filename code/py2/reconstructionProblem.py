@@ -38,6 +38,7 @@ class reconstructionProblem(base):
 
 		# calculate the reprojection error:
 		# What if points are behind the cameras?
+		# Should be adapted to except 'missing' points
 		(err, errors_per_point) = VO.calculateReprojectionError(Rs, Ts, X, self.IPs, self.n_cameras, self.n_world_points, self.K);
 
 		# return the fitness:

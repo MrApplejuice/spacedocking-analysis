@@ -532,7 +532,7 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 		points_world[p, :] = size * (np.random.rand(1,3)*2-np.ones([1,3])) + transl;
 
 	# 3) translate the drone coordinates to camera coordinates
-	(Rotations, Translations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
+	(Rotations, Translations, Rot, Transl) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
 
 	# 4) project the world points into the images
 	IPs = [];
@@ -579,6 +579,7 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 
 	if(graphics):
 		# enforce equal axes
+		pl.axis('equal');
 		pl.title('Positions and orientations');
 		pl.show();
 		
@@ -591,19 +592,100 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	# 5) induce some noise in movement perception / world point perception
 
 	# noise on image points:
-	stv = 0.3;
-	for fr in range(n_frames):
-		for p in range(n_points):
-			noise = stv * np.random.randn();
-			IPs[fr][p][0][0] += noise;
-			noise = stv * np.random.randn();
-			IPs[fr][p][0][1] += noise;
+	#stv = 0.3;
+	#for fr in range(n_frames):
+	#	for p in range(n_points):
+	#		noise = stv * np.random.randn();
+	#		IPs[fr][p][0][0] += noise;
+	#		noise = stv * np.random.randn();
+	#		IPs[fr][p][0][1] += noise;
 
 	# no noise on movements and rotations yet
+	# so roll, yaw, pitch, vx, vy, vz
 	
 	# 6) reconstruct with the algorithm
-	(MRotations, MTranslations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
 	
+	# First get an estimate for the world coordinates:
+	(MRot, MTransl, MRotations, MTranslations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
+	X = estimateWorldPoints(MRotations, MTranslations, IPs, K);
+	
+	# Adapt the evolutionary algorithm, so that it can take missing image points.
+	# Also, the genome constructor should directly take:
+	# roll, yaw, pitch, vx, vy, vz, snapshot_time_interval
+	genome = constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X);
+	(Rs, Ts, X_est) = evolveMultiReconstruction('test', n_frames, n_points, IPs, 3.0, 10.0, K, genome);
+	
+def estimateWorldPoints(Rotations, Translations, IPs, K):
+	""" Takes the rotations and translations in a single reference frame and 
+		corresponding image matches. It then does a triangulation for each image pair,
+		and averages the resulting world coordinate estimates.
+	"""
+	
+	# number of frames and points
+	n_frames = len(IPs);
+	# even unobserved points should take up place in each IPs[frame]:
+	n_points = len(IPs[0]);
+	
+	# WP will contain per point a list of coordinate estimates:
+	WP = [];
+	for p in range(n_points):
+		WP.append([]);
+	
+	for i in range(n_frames):
+	
+		# rotation and translation of the first frame
+		R1 = Rotations[i];
+		t1 = Translations[i];
+				
+		for j in range(i+1, n_frames):
+		
+			# rotation and translation of the second frame
+			R2 = Rotations[j];
+			t2 = Translations[j];
+			
+			pdb.set_trace();
+			# get common points:
+			(image_points1, image_points2, indices) = getCommonPoints(IPs, i, j, n_points);
+			
+			# triangulate the points
+			W = getTriangulatedPoints(image_points1, image_points2, R2, t2, K, R1, t1);
+			
+			# Add coordinate to world point list:
+			for ind in range(len(indices)):
+				WP[indices[ind]].append(W[ind]);
+	
+	# average over the coordinates to get an estimate:
+	X = np.zeros(n_points, 3);
+	for p in range(n_points):
+		n_coords = len(WP[p]);
+		C = np.zeros(1, 3);
+		for c in range(n_coords):
+			C += WP[p][c];
+		C /= n_coords;
+		X[p, :] = C;
+	
+	return X;
+
+def getCommonPoints(IPs, frame1, frame2, n_points):
+	""" Get the points visible in both images.
+	"""
+	
+	image_points1 = [];
+	image_points2 = [];
+	indices = [];
+	for p in range(n_points):
+		
+		if(IPs[frame1][p] != [] and IPs[frame2][p] != []):
+		
+			indices.append(p);
+			image_points1.append([IPs[frame1][p][0][0], IPs[frame1][p][0][1]]);
+			image_points2.append([IPs[frame2][p][0][0], IPs[frame2][p][0][1]]);
+				
+	
+	image_points1 = np.array(image_points1);				
+	image_points2 = np.array(image_points2);
+	
+	return (image_points1, image_points2, indices);
 
 def showPointsOverTime(IPs):
 	""" Shows image points over time. One world point is tracked and shown as a line.
@@ -637,10 +719,14 @@ def limit_angle(angle):
 
 	return angle;
 
-def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval):
+def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, graphics=False):
 	""" This method takes the Euler angles and velocities from the AR drone
 			and translates them to "camera" rotations and translations (actually
 			translations and rotations of the world points).
+			
+		It returns (Rot, Transl, Rotations, Translations)
+		- Rot, Transl: rotations and translations between subsequent views
+		- Rotations, Translations: rotations and translations in a common frame (defined by the first view)
 	"""
 
 	# We have n_frames with for each frame the velocity and Euler angles
@@ -648,15 +734,16 @@ def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interva
 	# with the first camera being at (0,0,0) and being level.
 	n_frames = len(roll);
 
-	Rotations = [];
-	Translations = [];
+	Rot = [];
+	Transl = [];
 	
 	# first camera:
 	# only valid if if yaw[0]. roll[0], pitch[0] are 0
+	# however, we define our world in terms of this first attitude, so it is only a definition question:
 	t1 = np.zeros([3,1]);
-	Translations.append(t1);
+	Transl.append(t1);
 	R1 = np.eye(3);
-	Rotations.append(R1);		
+	Rot.append(R1);		
 
 	for fr in range(n_frames-1):
 	
@@ -672,7 +759,7 @@ def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interva
 		R = getRotationMatrix(Rx, Ry, Rz);
 
 		# append the rotation matrix:
-		Rotations.append(R);
+		Rot.append(R);
 
 		# get the translation from the drone data:
 		t = np.zeros([3,1]);
@@ -685,9 +772,50 @@ def convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interva
 		t_camera = convertTranslationFromDroneToCamera(t);
 			
 		# append the translation vector:
-		Translations.append(t_camera);
+		Transl.append(t_camera);
 
-	return (Rotations, Translations);
+	# Put all translations / rotations in one frame:
+	Rotations = [];
+	Translations = [];
+	
+	# First camera is fixed:
+	R = np.eye(3);
+	transl = np.zeros([3,1]);
+	
+	if(graphics):
+		# make a figure to plot positions and camera axes:
+		pl.figure();
+		pl.hold(True);
+		camera_axis = np.array([0,0,0.1]);
+		
+	for fr in range(n_frames):
+
+		# rotations and translations should still be made incremental:		
+		
+		# some nasty questions:
+		# a) first translate and then rotate? If time delta is small enough it does not matter - but it's not so it does : )
+		# b) do vx, vy, vz give velocities in body coordinates? Or in the inertial reference frame?
+		
+		# get the translation:
+		transl = np.dot(np.linalg.inv(R), Transl[fr]) + transl;
+		
+		# rotation:	
+		R = np.dot(Rot[fr], R);
+		
+		# add them to the Rotations / Translations structs:
+		Rotations.append(R);
+		Translations.append(transl);
+
+		if(graphics):
+			# plot camera position and camera axis in the X,Z-plane:
+			# since translations / rotations are of world points, we have to negate them /
+			# invert them to get the camera translations / rotations:
+			pl.plot(-transl[0], -transl[2], 'x');
+			cR = np.dot(np.linalg.inv(R), camera_axis)
+			pl.plot([-transl[0], -transl[0]+cR[0]], [-transl[2], -transl[2]+cR[2]]);
+			
+
+	return (Rot, Transl, Rotations, Translations);
 
 def convertAnglesFromDroneToCamera(delta_phi, delta_theta, delta_psi):
 	""" Convert the angles from the drone to the rotation of the world points with respect to the camera.
@@ -721,10 +849,11 @@ def convertTranslationFromDroneToCamera(t):
 
 	return t_camera;
 
-def getTriangulatedPoints(image_points1, image_points2, R2, t2, K):
+def getTriangulatedPoints(image_points1, image_points2, R2, t2, K, R1=[], t1=[]):
 
 	""" Get the triangulated world points on the basis of corresponding image points and 
 			a rotation matrix, displacement vector and calibration matrix.
+			The rotation and translation of the first camera can optionally also be given.
 	"""
 
 	# 3D-reconstruction:
@@ -733,7 +862,13 @@ def getTriangulatedPoints(image_points1, image_points2, R2, t2, K):
 
 	# P1 is at the origin
 	P1 = np.zeros([3, 4]);
-	P1[:3,:3] = np.eye(3);
+	# default assumption is that the first camera is at the origin:
+	if(len(R1) == 0):
+		P1[:3,:3] = np.eye(3);
+	else:
+		P1[:3,:3] = R1;
+	if(len(t1) != 0):
+		P1[:3,3] = np.array([t1[0][0], t1[1][0], t1[2][0]]);
 	P1 = np.dot(K, P1);
 
 	# P2 is the displaced camera:

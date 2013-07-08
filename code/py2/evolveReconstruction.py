@@ -138,7 +138,6 @@ def evolveReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[], t_s
 	genome = archi[best_ind].population.champion.x;
 	(Rs, Ts, X) = prob.transformGenomeToMatrices(genome, n_views, n_points);
 	return (Rs, Ts, X);
-	
 
 def constructGenome(phis, thetas, psis, Ts, n_world_points, Xs=[]):
 	""" Uses the information present from for example the drone's state estimation to 

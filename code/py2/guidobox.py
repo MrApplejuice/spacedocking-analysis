@@ -557,9 +557,11 @@ def getFeaturesWithDistance(sample):
 			t[2] = vz[fr];
 			t = t * snapshot_time_interval;
 			speed = np.linalg.norm(np.array([vx[fr], vy[fr], vz[fr]]));
+			
 			# it is questionable that X is really necessary, one could not send parameters for X and optimize the R, ts so that single triangulations fit as good as possible with all image points:
 			# also, R and t should be translated to a camera definition:
 			X = getTriangulatedPoints(image_points1, image_points2, R, t, K);
+			
 			# like this it is impossible to determine what rotation to apply to the points
 			# so should we rotate them immediately? Or include more info? Or add empty elements to the vector for non-matched points?
 			for f in range(n_features):
