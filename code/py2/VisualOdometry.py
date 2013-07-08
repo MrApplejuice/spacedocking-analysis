@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as pl
+from evolveMultiReconstruction import *
 from evolveReconstruction import *
 # from guidobox import *
 
@@ -932,13 +933,15 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 			they are from the observed locations.	
 	"""
 
-	distCoeffs = np.zeros([4]); # no clue what this means
+	distCoeffs = np.zeros([4]); # distortion coefficients
 
 	# per camera, project the world points into the image and calculate the error with respect to the measured image points:
 	total_error = 0;
 	error_per_point = np.array([0.0]*n_world_points);
 
 	for cam in range(n_cameras):
+
+		pdb.set_trace();
 
 		# The measured image points:
 		measured_image_points = IPs[cam];
