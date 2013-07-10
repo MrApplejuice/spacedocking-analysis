@@ -593,13 +593,13 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	# 5) induce some noise in movement perception / world point perception
 
 	# noise on image points:
-	#stv = 0.3;
-	#for fr in range(n_frames):
-	#	for p in range(n_points):
-	#		noise = stv * np.random.randn();
-	#		IPs[fr][p][0][0] += noise;
-	#		noise = stv * np.random.randn();
-	#		IPs[fr][p][0][1] += noise;
+	stv = 0.3;
+	for fr in range(n_frames):
+		for p in range(n_points):
+			noise = stv * np.random.randn();
+			IPs[fr][p][0][0] += noise;
+			noise = stv * np.random.randn();
+			IPs[fr][p][0][1] += noise;
 
 	# no noise on movements and rotations yet
 	# so roll, yaw, pitch, vx, vy, vz
@@ -615,6 +615,50 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	# roll, yaw, pitch, vx, vy, vz, snapshot_time_interval
 	genome = constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X);
 	(Rs, Ts, X_est) = evolveMultiReconstruction('test', n_frames, n_points, IPs, 3.0, 10.0, K, genome);
+	
+	# what is the total error / error per point
+	(err, errors_per_point) = calculateReprojectionError(Rs, Ts, X, IPs, n_frames, n_points, K);
+	
+	# and the errors in the world coordinates (distance estimate to ground truth):
+	M_world = np.matrix(points_world);
+	M_est = np.matrix(X_est);
+	M_est = M_est[:,:3];
+	world_distances = np.array([0.0] * n_points);
+	for p in range(n_points):
+		world_distances[p] = np.linalg.norm(M_world[p] - M_est[p]);
+	
+	# show resulting reconstruction:
+	fig = pl.figure()
+	ax = fig.gca(projection='3d')
+
+	x = np.array(M_est[:,0]); y = np.array(M_est[:,1]); z = np.array(M_est[:,2]);
+	x = flatten(x); y = flatten(y); z = flatten(z);
+	#ax.scatter(x, y, z, '*', color=(1.0,0,0));
+	cm = pl.cm.get_cmap('jet')
+	ax.scatter(x, y, z, '*', c=errors_per_point, cmap=cm);
+	fig.hold = True;
+
+	#x = (1.0/sc)*np.array(M_est[:,0]); y = (1.0/sc)*np.array(M_est[:,1]); z = (1.0/sc)*np.array(M_est[:,2]);
+	#x = flatten(x); y = flatten(y); z = flatten(z);
+	#ax.scatter(x, y, z, 's', color=(0,0,1.0));
+
+	x = np.array(M_world[:,0]); y = np.array(M_world[:,1]); z = np.array(M_world[:,2]);
+	x = flatten(x); y = flatten(y); z = flatten(z);
+	ax.scatter(x, y, z, 'o', color=(0.0,1.0,0.0));
+
+	pl.xlabel('X'); pl.ylabel('Y'); 
+	pl.title('Real vs. estimated world points (camera reference frame).');
+	# pl.show();
+	
+	pl.figure();
+	pl.hist(errors_per_point);
+	pl.title('Image errors histogram');
+	pl.show();
+	
+	pl.figure();
+	pl.hist(world_distances);
+	pl.title('World distances histogram');
+	pl.show();
 	
 def estimateWorldPoints(Rotations, Translations, IPs, K):
 	""" Takes the rotations and translations in a single reference frame and 
