@@ -941,8 +941,6 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 
 	for cam in range(n_cameras):
 
-		pdb.set_trace();
-
 		# The measured image points:
 		measured_image_points = IPs[cam];
 			
