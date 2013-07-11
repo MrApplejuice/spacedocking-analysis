@@ -321,7 +321,7 @@ def testVisualOdometry(n_points=100):
 
 	# determine the rotation and translation between the two views:
 	(R21, R22, t21, t22) = determineTransformation(image_points1, image_points2, K, W, H);
-	# pdb.set_trace();
+
 	# 'wrong' solutions have a negative element on the diagonal, but calling determineTransformation repetitively does not help... 
 	# ws = wrongSolution(R21, R22);
 	# while(ws == 1):
@@ -594,15 +594,36 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 
 	# noise on image points:
 	stv = 0.3;
+	p_missing = 0.15; 
 	for fr in range(n_frames):
 		for p in range(n_points):
-			noise = stv * np.random.randn();
-			IPs[fr][p][0][0] += noise;
-			noise = stv * np.random.randn();
-			IPs[fr][p][0][1] += noise;
-
+			if(np.random.rand() < p_missing):
+				IPs[fr][p][0][0] = -1;
+				IPs[fr][p][0][1] = -1;
+			else:
+				noise = stv * np.random.randn();
+				IPs[fr][p][0][0] += noise;
+				noise = stv * np.random.randn();
+				IPs[fr][p][0][1] += noise;
+	
 	# no noise on movements and rotations yet
 	# so roll, yaw, pitch, vx, vy, vz
+	stv_angle = 1.5;
+	stv_vel = 50.0;
+	pdb.set_trace();
+	for fr in range(n_frames):
+		noise = stv_angle * np.random.randn();
+		roll[fr] += noise;
+		noise = stv_angle * np.random.randn();
+		yaw[fr] += noise;
+		noise = stv_angle * np.random.randn();
+		pitch[fr] += noise;
+		noise = stv_vel * np.random.randn();
+		vx[fr] += noise;
+		noise = stv_vel * np.random.randn();
+		vy[fr] += noise;
+		noise = stv_vel * np.random.randn();
+		vz[fr] += noise;
 	
 	# 6) reconstruct with the algorithm
 	
@@ -626,6 +647,12 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	world_distances = np.array([0.0] * n_points);
 	for p in range(n_points):
 		world_distances[p] = np.linalg.norm(M_world[p] - M_est[p]);
+	
+	# show relation between image error and world error:
+	pl.figure();
+	pl.plot(errors_per_point, world_distances, 'x');
+	pl.title('Relation image error and world error');
+	pl.show();
 	
 	# show resulting reconstruction:
 	fig = pl.figure()
@@ -697,16 +724,26 @@ def estimateWorldPoints(Rotations, Translations, IPs, K):
 			# Add coordinate to world point list:
 			for ind in range(len(indices)):
 				WP[indices[ind]].append(W[ind]);
+				
 	
 	# average over the coordinates to get an estimate:
+	standard_coordinate = np.zeros([1,3]);
+	standard_coordinate[0,2] = 3;
 	X = np.zeros([n_points, 3]);
 	for p in range(n_points):
+		
 		n_coords = len(WP[p]);
-		C = np.zeros([1, 3]);
-		for c in range(n_coords):
-			C += WP[p][c][:3];
-		C /= n_coords;
-		X[p, :] = C;
+		
+		if(n_coords == 0):
+			# if no estimate: put a standard estimate in (this actually means we should not even estimate it)
+			X[p,:] = standard_coordinate;
+		else:
+			# else average over the estimates:
+			C = np.zeros([1, 3]);
+			for c in range(n_coords):
+				C += WP[p][c][:3];
+			C /= n_coords;
+			X[p, :] = C;
 	
 	return X;
 
@@ -719,12 +756,10 @@ def getCommonPoints(IPs, frame1, frame2, n_points):
 	indices = [];
 	for p in range(n_points):
 		
-		if(IPs[frame1][p] != [] and IPs[frame2][p] != []):
-		
+		if(observed(IPs[frame1][p]) and observed(IPs[frame2][p])):
 			indices.append(p);
 			image_points1.append([IPs[frame1][p][0][0], IPs[frame1][p][0][1]]);
 			image_points2.append([IPs[frame2][p][0][0], IPs[frame2][p][0][1]]);
-				
 	
 	image_points1 = np.array(image_points1);				
 	image_points2 = np.array(image_points2);
@@ -999,14 +1034,22 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 		# calculate the error for this camera:
 		err = 0;
 		for ip in range(n_world_points):
-			# this should now take into account unobserved points:
-			error_per_point[ip] += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
+			# only determine error if the point is observed in the image:
+			if(observed(measured_image_points[ip])):
+				error_per_point[ip] += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
 			err += error_per_point[ip];
 
 		# print 'Total error: %f' % total_error;
 		total_error += err;
 
 	return (total_error, error_per_point);
+
+def observed(image_point):
+	# unobserved points have image coordinate (-1,-1)
+	if(image_point[0][0] == -1 or image_point[0][1] == -1):
+		return False;
+	else:
+		return True;
 
 def printRotationMatrix(R):
 
