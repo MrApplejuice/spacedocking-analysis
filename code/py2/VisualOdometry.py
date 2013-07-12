@@ -1,6 +1,7 @@
 import pdb
 import cv2
 import numpy as np
+import math
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as pl
@@ -688,14 +689,14 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 			if(observed(IPs[fr1][p]) and observed(IPs[fr2][p])):
 				image_points1.append(IPs[fr1][p]);
 				image_points2.append(IPs[fr2][p]);
-		pdb.set_trace();
 		(R21, R22, t21, t22) = determineTransformation(np.array(image_points1), np.array(image_points2), K);
 		(P2_est, R2_est, t2_est) = selectCorrectRotationTranslation(np.array(image_points1), np.array(image_points2), K, R21, R22, t21, t22);
 		Rs_VO.append(R2_est);
 		Ts_VO.append(t2_est);
 	# b) compare with the drone info (in drone coordinates):
-	for fr in range(len(Rs_vo)):
-		R = Rs_vo[fr];
+	for fr in range(len(Rs_VO)):
+		pdb.set_trace();
+		R = Rs_VO[fr];
 		(Rx1, Ry1, Rz1, Rx2, Ry2, Rz2) = getEulerAnglesFromRotationMatrix(R);
 		(roll1, pitch1, yaw1) = convertAnglesFromCameraToDrone(Rx1, Ry1, Rz1);
 		(roll2, pitch2, yaw2) = convertAnglesFromCameraToDrone(Rx2, Ry2, Rz2);
@@ -771,16 +772,16 @@ def getEulerAnglesFromRotationMatrix(R):
 	
 	if(np.abs(R[2,0]-1.0) > eps and np.abs(R[2,0]+1.0) > eps):
 		# get Ry
-		Ry1 = -np.arcsin(R[2,0]);
-		Ry2 = np.pi + np.arcsin(R[2,0]);
+		Ry1 = -math.asin(R[2,0]);
+		Ry2 = np.pi + math.asin(R[2,0]);
 		
 		# get Rx
-		Rx1 = np.atan2(R[1,2]/Ry1, R[2,2]/Ry1);
-		Rx2 = np.atan2(R[1,2]/Ry2, R[2,2]/Ry2);
+		Rx1 = math.atan2(R[1,2]/Ry1, R[2,2]/Ry1);
+		Rx2 = math.atan2(R[1,2]/Ry2, R[2,2]/Ry2);
 		
 		# get Rz
-		Rz1 = np.atan2(R[1,0]/Ry1, R[0,0]/Ry1);
-		Rz2 = np.atan2(R[1,0]/Ry2, R[0,0]/Ry2);
+		Rz1 = math.atan2(R[1,0]/Ry1, R[0,0]/Ry1);
+		Rz2 = math.atan2(R[1,0]/Ry2, R[0,0]/Ry2);
 		
 		return (Rx1, Ry1, Rz1, Rx2, Ry2, Rz2);
 	else:
@@ -789,10 +790,10 @@ def getEulerAnglesFromRotationMatrix(R):
 		
 		if(np.abs(R[2,0]+1.0) < eps):
 			Ry = np.pi / 2;
-			Rx = Rz + np.atan2(R[0,1], R[0,2]);
+			Rx = Rz + math.atan2(R[0,1], R[0,2]);
 		else:
 			Ry = -np.pi/2;
-			Rx = Rz + np.atan2(-R[0,1], -R[0,2]);
+			Rx = Rz + math.atan2(-R[0,1], -R[0,2]);
 			
 		return (Rx, Ry, Rz, Rx, Ry, Rz);
 	
@@ -1283,8 +1284,6 @@ def triangulate(x1,x2,P1,P2):
 	return X #np.array(X).T
 
 def determineTransformation(points1, points2, K, W=[], H=[]):
-
-	pdb.set_trace();
 
 	DEBUG = False;
 
