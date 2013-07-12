@@ -461,6 +461,56 @@ def testVisualOdometry(n_points=100):
 	# now we have R2, t2, and X, which we return:
 	return (R2_est, t2_est, X_est);	
 
+def selectCorrectRotationTranslation(image_points1, image_points2, K, R21, R22, t21, t22, R1 = [], l1 = []):
+	""" The 8-point algorithm gives back four options for the rotation and translation matrix.
+		The matrices that result in all points lying in front of the cameras should be selected.
+	"""
+
+	if(len(R1) == 0 or len(l1) == 0):
+		# location camera 1:
+		l1 = np.zeros([3,1]);
+		R1 = np.eye(3);
+	
+	# 3D-reconstruction:
+	ip1 = cv2.convertPointsToHomogeneous(image_points1.astype(np.float32));
+	ip2 = cv2.convertPointsToHomogeneous(image_points2.astype(np.float32));
+
+	# P1 is at the origin
+	P1 = np.zeros([3, 4]);
+	P1[:3,:3] = np.eye(3);
+	P1 = np.dot(K, P1);
+
+	# P2 is rotated and translated with respect to camera 1
+	# determine the right R, t:
+	# iterate over all points, reproject them to the 3D-world
+	# exclude one of the options as soon as 	
+	# first determine all 4 projection matrices:
+	R2s = [];
+	R2s.append(R21);
+	R2s.append(R22);
+	t2s = [];
+	t2s.append(t21);
+	t2s.append(t22);
+
+	# reproject the points into the 3D-world:
+	index_r = 0; index_t = 0;
+	for ir in range(2):
+		# clean up the rotation matrix, i.e., don't allow mirroring of any axis:
+		R2s[ir] = cleanUpR(R2s[ir]);
+		for it in range(2):
+			point_behind = infeasibleP2(ip1, ip2, R1, l1, R2s[ir], t2s[it], K);
+
+			if(point_behind == 0):
+				index_r = ir;
+				index_t = it;
+				print 'ir, it = %d, %d' % (ir, it)
+
+	P2_est = getProjectionMatrix(R2s[index_r], t2s[index_t], K);
+	R2_est = R2s[index_r]; t2_est = t2s[index_t];
+	
+	return (P2_est, R2_est, t2_est);
+
+
 def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_roll=0.0, b_pitch =0.0, b_yaw = 0.0):
 	""" Method to test the 3D-reconstruction for AstroDrone. It creates a drone movement
 			consisting of n_frames camera poses, and creates n_wp world points. It projects the points 
@@ -608,9 +658,9 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	
 	# no noise on movements and rotations yet
 	# so roll, yaw, pitch, vx, vy, vz
-	stv_angle = 1.5;
-	stv_vel = 50.0;
-	pdb.set_trace();
+	stv_angle = 0.5;
+	stv_vel = 25.0;
+
 	for fr in range(n_frames):
 		noise = stv_angle * np.random.randn();
 		roll[fr] += noise;
@@ -624,6 +674,28 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 		vy[fr] += noise;
 		noise = stv_vel * np.random.randn();
 		vz[fr] += noise;
+	
+	# How close are the estimates from the 8-point algorithm to the onboard estimates?
+	# If close enough, we may utilize them for better initialization.
+	# a) get rotations and translations per pair (in camera reference frame)
+	image_points1 = [];
+	image_points2 = [];
+	Rs_VO = [];
+	Ts_VO = [];
+	for fr1 in range(n_frames-1):
+		fr2 = fr1 + 1;
+		for p in range(n_points):
+			if(observed(IPs[fr1][p]) and observed(IPs[fr2][p])):
+				image_points1.append(IPs[fr1][p]);
+				image_points2.append(IPs[fr2][p]);
+		pdb.set_trace();
+		(R21, R22, t21, t22) = determineTransformation(np.array(image_points1), np.array(image_points2), K);
+		(P2_est, R2_est, t2_est) = selectCorrectRotationTranslation(np.array(image_points1), np.array(image_points2), K, R21, R22, t21, t22);
+		Rs_VO.append(R2_est);
+		Ts_VO.append(t2_est);
+	# b) compare with the drone info (in drone coordinates):
+	
+	
 	
 	# 6) reconstruct with the algorithm
 	
@@ -1156,7 +1228,9 @@ def triangulate(x1,x2,P1,P2):
 	
 	return X #np.array(X).T
 
-def determineTransformation(points1, points2, K, W, H):
+def determineTransformation(points1, points2, K, W=[], H=[]):
+
+	pdb.set_trace();
 
 	DEBUG = False;
 
