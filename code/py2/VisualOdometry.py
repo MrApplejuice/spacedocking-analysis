@@ -694,8 +694,12 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 		Rs_VO.append(R2_est);
 		Ts_VO.append(t2_est);
 	# b) compare with the drone info (in drone coordinates):
-	
-	
+	for fr in range(len(Rs_vo)):
+		R = Rs_vo[fr];
+		(Rx1, Ry1, Rz1, Rx2, Ry2, Rz2) = getEulerAnglesFromRotationMatrix(R);
+		(roll1, pitch1, yaw1) = convertAnglesFromCameraToDrone(Rx1, Ry1, Rz1);
+		(roll2, pitch2, yaw2) = convertAnglesFromCameraToDrone(Rx2, Ry2, Rz2);
+		
 	
 	# 6) reconstruct with the algorithm
 	
@@ -758,6 +762,39 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	pl.hist(world_distances);
 	pl.title('World distances histogram');
 	pl.show();
+
+def getEulerAnglesFromRotationMatrix(R):
+	""" Get Euler angles from rotation matrix.
+		Returns Rx, Ry, Rz.
+	"""
+	eps = 1E-4;
+	
+	if(np.abs(R[2,0]-1.0) > eps and np.abs(R[2,0]+1.0) > eps):
+		# get Ry
+		Ry1 = -np.arcsin(R[2,0]);
+		Ry2 = np.pi + np.arcsin(R[2,0]);
+		
+		# get Rx
+		Rx1 = np.atan2(R[1,2]/Ry1, R[2,2]/Ry1);
+		Rx2 = np.atan2(R[1,2]/Ry2, R[2,2]/Ry2);
+		
+		# get Rz
+		Rz1 = np.atan2(R[1,0]/Ry1, R[0,0]/Ry1);
+		Rz2 = np.atan2(R[1,0]/Ry2, R[0,0]/Ry2);
+		
+		return (Rx1, Ry1, Rz1, Rx2, Ry2, Rz2);
+	else:
+		# Rz can be set to anything:
+		Rz = 0;
+		
+		if(np.abs(R[2,0]+1.0) < eps):
+			Ry = np.pi / 2;
+			Rx = Rz + np.atan2(R[0,1], R[0,2]);
+		else:
+			Ry = -np.pi/2;
+			Rx = Rz + np.atan2(-R[0,1], -R[0,2]);
+			
+		return (Rx, Ry, Rz, Rx, Ry, Rz);
 	
 def estimateWorldPoints(Rotations, Translations, IPs, K):
 	""" Takes the rotations and translations in a single reference frame and 
@@ -999,6 +1036,23 @@ def convertTranslationFromDroneToCamera(t):
 	t_camera[2,0] = -t[1,0];
 
 	return t_camera;
+
+def convertAnglesFromCameraToDrone(Rx, Ry, Rz):
+	""" Convert the angles from the rotation of the world points with respect to the camera to the drone.
+	"""
+	
+	# There are three differences:
+	# (1) the drone coordinate frame is right-handed while the camera is left-handed
+	# (2) the axes have different names
+	# (3) the angles are of the drone, while the "camera" angles actually indicate how the world points rotate (* -1 here)
+
+	# This results in the following mapping:
+	delta_theta = Rx; 
+	delta_psi = Ry;
+	delta_phi = Rz;
+
+	return (delta_phi, delta_theta, delta_psi);
+
 
 def getTriangulatedPoints(image_points1, image_points2, R2, t2, K, R1=[], t1=[]):
 
