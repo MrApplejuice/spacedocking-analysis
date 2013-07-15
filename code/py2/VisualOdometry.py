@@ -657,26 +657,10 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 				noise = stv * np.random.randn();
 				IPs[fr][p][0][1] += noise;
 	
-	# no noise on movements and rotations yet
-	# so roll, yaw, pitch, vx, vy, vz
-	stv_angle = 0.5;
-	stv_vel = 25.0;
-
-	for fr in range(n_frames):
-		noise = stv_angle * np.random.randn();
-		roll[fr] += noise;
-		noise = stv_angle * np.random.randn();
-		yaw[fr] += noise;
-		noise = stv_angle * np.random.randn();
-		pitch[fr] += noise;
-		noise = stv_vel * np.random.randn();
-		vx[fr] += noise;
-		noise = stv_vel * np.random.randn();
-		vy[fr] += noise;
-		noise = stv_vel * np.random.randn();
-		vz[fr] += noise;
 	
+	# Code that may be used for initialization:
 	# How close are the estimates from the 8-point algorithm to the onboard estimates?
+	
 	# If close enough, we may utilize them for better initialization.
 	# a) get rotations and translations per pair (in camera reference frame)
 	image_points1 = [];
@@ -695,14 +679,65 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 		Ts_VO.append(t2_est);
 	# b) compare with the drone info (in drone coordinates):
 	for fr in range(len(Rs_VO)):
-		pdb.set_trace();
 		R = Rs_VO[fr];
 		(Rx1, Ry1, Rz1, Rx2, Ry2, Rz2) = getEulerAnglesFromRotationMatrix(R);
-		(roll1, pitch1, yaw1) = convertAnglesFromCameraToDrone(Rx1, Ry1, Rz1);
-		(roll2, pitch2, yaw2) = convertAnglesFromCameraToDrone(Rx2, Ry2, Rz2);
+		(droll1, dpitch1, dyaw1) = convertAnglesFromCameraToDrone(Rx1, Ry1, Rz1);
+		(droll2, dpitch2, dyaw2) = convertAnglesFromCameraToDrone(Rx2, Ry2, Rz2);
 		
+		# get the rotation from the drone data: 
+		delta_phi = limit_angle(np.deg2rad(roll[fr+1] - roll[fr]));
+		delta_theta = limit_angle(np.deg2rad(pitch[fr+1] - pitch[fr]));
+		delta_psi = limit_angle(np.deg2rad(yaw[fr+1] - yaw[fr]));
+		
+		# see what estimate is best (normally we don't know):
+		#err = np.array([0.0] * 2);
+		#err[0] = np.abs(delta_phi - droll1) + np.abs(delta_theta - dpitch1) + np.abs(delta_psi - dyaw1);
+		#err[1] = np.abs(delta_phi - droll2) + np.abs(delta_theta - dpitch2) + np.abs(delta_psi - dyaw2);
+		#min_ind = np.argmin(err);
+		
+		print 'True delta roll / pitch / yaw = %f, %f, %f' % (delta_phi, delta_theta, delta_psi);
+		print '1) Estimated delta roll / pitch / yaw = %f, %f, %f' % (droll1, dpitch1, dyaw1);
+		print '2) Estimated delta roll / pitch / yaw = %f, %f, %f' % (droll2, dpitch2, dyaw2);
+		
+
+		t_drone= np.zeros([3,1]);
+		t_drone[0,0] = Ts_VO[fr][0];
+		t_drone[1,0] = Ts_VO[fr][1];
+		t_drone[2,0] = Ts_VO[fr][2];
+		t_drone = convertTranslationFromCameraToDrone(t_drone);
+		t_drone /= np.linalg.norm(t_drone);
+		
+		t_gt_drone = np.zeros([3,1]);
+		t_gt_drone[0] = vx[fr];
+		t_gt_drone[1] = vy[fr];
+		t_gt_drone[2] = vz[fr];
+		t_gt_drone /= np.linalg.norm(t_gt_drone);
+		
+		print 'True translation: %f, %f, %f' % (t_gt_drone[0], t_gt_drone[1], t_gt_drone[2]);
+		print 'Estimated translation: %f, %f, %f' % (t_drone[0], t_drone[1], t_drone[2]);
+	
+	# noise on movements and rotations
+	# so roll, yaw, pitch, vx, vy, vz
+	stv_angle = 0.5;
+	stv_vel = 25.0;
+
+	for fr in range(n_frames):
+		noise = stv_angle * np.random.randn();
+		roll[fr] += noise;
+		noise = stv_angle * np.random.randn();
+		yaw[fr] += noise;
+		noise = stv_angle * np.random.randn();
+		pitch[fr] += noise;
+		noise = stv_vel * np.random.randn();
+		vx[fr] += noise;
+		noise = stv_vel * np.random.randn();
+		vy[fr] += noise;
+		noise = stv_vel * np.random.randn();
+		vz[fr] += noise;	
 	
 	# 6) reconstruct with the algorithm
+	
+	# We should vary on all parameters (yaw  - vz) and perform the following steps (until genome) in the evolveMultiReconstruction file to get a varied initial population.
 	
 	# First get an estimate for the world coordinates:
 	(MRot, MTransl, MRotations, MTranslations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
@@ -1053,6 +1088,23 @@ def convertAnglesFromCameraToDrone(Rx, Ry, Rz):
 	delta_phi = Rz;
 
 	return (delta_phi, delta_theta, delta_psi);
+
+def convertTranslationFromCameraToDrone(t):
+	""" Convert	the translation of the world points t with respect to the camera to the translation of the drone.
+	"""
+
+	# There are two differences:
+	# (1) The drone's axes are differently labeled x, y, z
+	# (2) The world point motion is opposite of the drone's motion
+
+	# This results in the following mapping:
+	t_drone = np.zeros([3,1]);
+	t_drone[0,0] = -t[0,0];
+	t_drone[1,0] = -t[2,0];
+	t_drone[2,0] = -t[1,0];
+
+	return t_drone;
+
 
 
 def getTriangulatedPoints(image_points1, image_points2, R2, t2, K, R1=[], t1=[]):
