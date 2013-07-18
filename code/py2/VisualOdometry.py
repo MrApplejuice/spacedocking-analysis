@@ -739,18 +739,22 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	
 	# We should vary on all parameters (yaw  - vz) and perform the following steps (until genome) in the evolveMultiReconstruction file to get a varied initial population.
 	
-	# First get an estimate for the world coordinates:
-	(MRot, MTransl, MRotations, MTranslations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
-	X = estimateWorldPoints(MRotations, MTranslations, IPs, K);
+	## First get an estimate for the world coordinates:
+	#(MRot, MTransl, MRotations, MTranslations) = convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
+	#X = estimateWorldPoints(MRotations, MTranslations, IPs, K);
+	#
+	## Adapt the evolutionary algorithm, so that it can take missing image points.
+	## Also, the genome constructor should directly take:
+	## roll, yaw, pitch, vx, vy, vz, snapshot_time_interval
+	#genome = constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X);
+	#(Rs, Ts, X_est) = evolveMultiReconstruction('test', n_frames, n_points, IPs, 3.0, 10.0, K, genome);
 	
-	# Adapt the evolutionary algorithm, so that it can take missing image points.
-	# Also, the genome constructor should directly take:
-	# roll, yaw, pitch, vx, vy, vz, snapshot_time_interval
-	genome = constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X);
-	(Rs, Ts, X_est) = evolveMultiReconstruction('test', n_frames, n_points, IPs, 3.0, 10.0, K, genome);
+	(Rs, Ts, X_est) = evolveMultiReconstruction('test', n_frames, n_points, IPs, 3.0, 10.0, K, roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
 	
 	# what is the total error / error per point
-	(err, errors_per_point) = calculateReprojectionError(Rs, Ts, X, IPs, n_frames, n_points, K);
+	(err, errors_per_point) = calculateReprojectionError(Rs, Ts, X_est, IPs, n_frames, n_points, K);
+	
+	print 'Final error: %f' % err;
 	
 	# and the errors in the world coordinates (distance estimate to ground truth):
 	M_world = np.matrix(points_world);
