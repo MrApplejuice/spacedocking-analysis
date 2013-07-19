@@ -19,8 +19,8 @@ def evolveMultiReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[]
 
 	# evolutions, generations and individuals
 	n_evolutions = 10;
-	n_generations = [1];#[10, 1, 10];
-	n_individuals = [1];#[50, 1, 50];
+	n_generations = [10, 1, 10];#[1];#
+	n_individuals = [50, 1, 50];#[1];#
 
 	if(len(roll) == 0):
 		seeded = False;
@@ -46,9 +46,9 @@ def evolveMultiReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[]
 	print 'Creating algorithms'
 	algo_list = []
 	#algo_list.append(algorithm.py_cmaes(gen = n_generations[0]))
-	#algo_list.append(algorithm.pso_gen(gen = n_generations[0], vcoeff = 0.2));
+	algo_list.append(algorithm.pso_gen(gen = n_generations[0], vcoeff = 0.2));
 	algo_list.append(algorithm.scipy_tnc(maxfun=150));
-	#algo_list.append(algorithm.sga(gen = n_generations[2], cr = 0.05, m = 0.05))
+	algo_list.append(algorithm.sga(gen = n_generations[2], cr = 0.05, m = 0.05))
 	
 	# algo_list.append(algorithm.monte_carlo(iter = n_generations))
 	# algo_list.append(algorithm.de(gen = n_generations))
@@ -100,7 +100,7 @@ def evolveMultiReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[]
 				pop = population(prob);
 				for ind in range(n_individuals[i]):
 				
-					if(n_individuals[i] > 1):
+					if(ind >= 1):
 						# perturb the individual:
 						x = getPerturbedIndividual(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, IPs, K);
 					

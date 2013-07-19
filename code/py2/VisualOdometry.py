@@ -790,7 +790,7 @@ def test3DReconstructionParrot(n_frames=5, n_points=30, bvx=0.0, bvy =0.0, b_rol
 	ax.scatter(x, y, z, 'o', color=(0.0,1.0,0.0));
 
 	pl.xlabel('X'); pl.ylabel('Y'); 
-	pl.title('Real vs. estimated world points (camera reference frame).');
+	pl.title('Real (g) vs. estimated (b) world points in cam ref frame.');
 	# pl.show();
 	
 	pl.figure();
@@ -1219,6 +1219,7 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 		for ip in range(n_world_points):
 			# only determine error if the point is observed in the image:
 			if(observed(measured_image_points[ip])):
+				# we need a high error for a point that is behind the camera (not yet implemented):
 				error_per_point[ip] += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
 			err += error_per_point[ip];
 
