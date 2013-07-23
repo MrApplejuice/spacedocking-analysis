@@ -1201,7 +1201,7 @@ def evaluateDistances(test_dir="../data", data_name="output.txt", selectSubset=T
 	pl.figure();
 	pl.plot(D, D_TTC, 'x');
 		
-def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=True, storeKohonenHistograms=True, KohonenFile='Kohonen.txt'):
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=False, storeKohonenHistograms=False, KohonenFile='Kohonen.txt'):
 	""" Plots simple statistics from the database such as where the photos were taken, etc.
 		If analyze_TTC = True, it also tracks features over multiple frames and assigns Time-To-Contacs to them.
 		If selectSubset = True, only 10 samples from the database are processed.
@@ -1219,7 +1219,7 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		
 	# iterate over the data:
 	n_samples = len(result);
-	n_frames = size(result[0]['frames']);
+	n_frames = len(result[0]['frames']);
 	
 	# statistics to gather:
 	n_data_points = n_samples * n_frames;
@@ -1236,6 +1236,8 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	yaw = np.array([0.0] * n_data_points);
 	responses = [];
 	sizes = [];
+	n_features_frame = [];
+	
 	# loop over all samples:
 	dp = 0;
 	sp = 0;
@@ -1256,12 +1258,29 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 			Kohonen = np.loadtxt(KohonenFile);
 			n_clusters = len(Kohonen);
 		
+	drone1 = 0.0;
+	drone2 = 0.0;
+	
+	marker_detected = 0.0;
+	marker_not_detected = 0.0;
+	
 	for sample in result:
+	
+		device_version = sample['device_version'];
+		if(isDrone1(device_version)):
+			drone1 += 1.0;
+		else:
+			drone2 += 1.0;
 	
 		for f in range(n_frames):
 			
 			# get frame:
 			frame = sample['frames'][f];
+		
+			if(frame['marker_detected']):
+				marker_detected += 1.0;
+			else:
+				marker_not_detected += 1.0;
 		
 			# get distance to marker:
 			position = frame['position'];
@@ -1281,6 +1300,8 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 			pitch[dp] = angles[pitch_index];
 			roll[dp] = angles[roll_index];
 			yaw[dp] = angles[yaw_index];
+			
+			n_features_frame.append(len(frame['features']['features']));
 			
 			# get statistics at feature level:
 			# n_features = len(frame['features']['features']);
@@ -1346,32 +1367,64 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 			
 		sp += 1;
 	
+	# Parrot AR drone 1 / 2:
+	# The slices will be ordered and plotted counter-clockwise.
+	total = drone1 + drone2;
+	perc1 = (drone1 / total) * 100.0;
+	perc2 = (drone2 / total) * 100.0;
+	labels = 'AR drone 1', 'AR drone 2'
+	fracs = [perc1, perc2]
+	#explode=(0, 0.05, 0, 0)
+	#pie(fracs, explode=explode, labels=labels,autopct='%1.1f%%', shadow=True, startangle=90)
+	pl.figure(facecolor='white', edgecolor='white');
+	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
+	pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((246.0/255.0,103.0/255.0,47.0/255.0), (246.0/255.0,183.0/255.0,47.0/255.0)), shadow=True);
+	
+	# number of features:
+	pl.figure(facecolor='white', edgecolor='white');
+	pl.hist(n_features_frame, 60,normed=True);
+	pl.xlabel('Number of features')
+	pl.ylabel('Number of occurrences');
+	
+	total = marker_detected + marker_not_detected;
+	perc1 = (marker_detected / total) * 100.0;
+	perc2 = (marker_not_detected / total) * 100.0;
+	labels = 'Marker detected', 'Marker not detected'
+	fracs = [perc1, perc2]
+	#explode=(0, 0.05, 0, 0)
+	#pie(fracs, explode=explode, labels=labels,autopct='%1.1f%%', shadow=True, startangle=90)
+	pl.figure(facecolor='white', edgecolor='white');
+	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
+	pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((246.0/255.0,103.0/255.0,47.0/255.0), (246.0/255.0,183.0/255.0,47.0/255.0)), shadow=True);
+	
+	pdb.set_trace();
+	
 	# show a histogram of the distances:
-	pl.figure();
+	pl.figure(facecolor='white', edgecolor='white');
 	pl.hist(distances_to_marker, 60);
 	pl.title('Distances at which photos are taken');
 	
-	pl.figure();
+	pl.figure(facecolor='white', edgecolor='white');
 	pl.plot(X, Y, 'x');
 	pl.title('Photo positions');
 	
 	# show a histogram of the speeds:
-	pl.figure();
+	pl.figure(facecolor='white', edgecolor='white');
 	pl.hist(speeds, 60);
 	pl.title('Speeds which photos are taken');
 	
 	# show a histogram of the feature response values:
-	pl.figure();
+	pl.figure(facecolor='white', edgecolor='white');
 	pl.hist(np.array(responses), 60);
 	pl.title('Feature response value distribution in database');
 	
 	# show a histogram of the feature sizes:
-	pl.figure();
+	pl.figure(facecolor='white', edgecolor='white');
 	pl.hist(np.array(sizes), 60);
 	pl.title('Feature size distribution in database');
 	
 	# show a histogram of yaw angles:
-	pl.figure();
+	pl.figure(facecolor='white', edgecolor='white');
 	pl.hist(yaw, 60);
 	pl.title('Histogram of yaw angles');
 	

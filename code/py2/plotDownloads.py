@@ -14,14 +14,15 @@ def plotDownloads():
 	weeks_uploads = np.asarray([0,3,7,13,17,18]);
 	uploads = np.asarray([100,200,200,60,100,78]);
 	
-	pl.figure();
-	pl.plot(weeks_downloads, np.cumsum(downloads), 'o-', color=(0,0,1));
+	pl.figure(facecolor='white', edgecolor='white');
+	pl.plot(weeks_downloads, np.cumsum(downloads), 's-', color=(0,0,1));
 	pl.hold(True);
-	pl.plot(weeks_uploads, np.cumsum(uploads), 'o-', color=(0,1,0));
-	pl.title('Uploads and downloads')
-	pdb.set_trace();
+	pl.plot(weeks_uploads, np.cumsum(uploads), 's-', color=(0,1,0));
 	pl.yticks(np.arange(0, 10000, 1000));
 	pl.grid(axis='y');
+	pl.legend(('App downloads', 'Uploaded samples'), shadow=True,fancybox=True,loc='upper left');
+	pl.xlabel('Weeks after release')
+	pl.ylabel('Number of downloads / uploads')
 	pl.show();
 	
 	
