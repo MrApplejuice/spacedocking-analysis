@@ -2,6 +2,7 @@ import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as pl
 import numpy as np
+import pdb
 
 def plotDownloads():
 	
@@ -14,10 +15,13 @@ def plotDownloads():
 	uploads = np.asarray([100,200,200,60,100,78]);
 	
 	pl.figure();
-	pl.plot(weeks_downloads, np.cumsum(downloads), color=(0,0,1));
+	pl.plot(weeks_downloads, np.cumsum(downloads), 'o-', color=(0,0,1));
 	pl.hold(True);
-	pl.plot(weeks_uploads, np.cumsum(uploads), color=(0,1,0));
+	pl.plot(weeks_uploads, np.cumsum(uploads), 'o-', color=(0,1,0));
 	pl.title('Uploads and downloads')
+	pdb.set_trace();
+	pl.yticks(np.arange(0, 10000, 1000));
+	pl.grid(axis='y');
 	pl.show();
 	
 	
