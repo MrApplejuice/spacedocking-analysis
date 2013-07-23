@@ -38,7 +38,7 @@ def evolveMultiReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[]
 		#print 'Prior genome: length = %d, max = %f, min = %f' % (len(x), np.max(np.array(x)), np.min(np.array(x)));
 		(MRot, MTransl, MRotations, MTranslations) = VO.convertFromDroneToCamera(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval);
 		X = VO.estimateWorldPoints(MRotations, MTranslations, IPs, K);
-		x = constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X);
+		x = constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X, verbose=True);
 		fit_prior = prob._objfun_impl(x);
 		print 'Prior fitness: %f' % fit_prior[0]; 
 		
@@ -158,12 +158,14 @@ def evolveMultiReconstruction(filename = 'test', n_views=2, n_points=100, IPs=[]
 			f2.close()
 		print ' '
 
+	pdb.set_trace();
+
 	# return the best individual:
 	genome = archi[best_ind].population.champion.x;
 	(Rs, Ts, X) = prob.transformMultiGenomeToMatrices(genome, n_views, n_points);
 	return (Rs, Ts, X);
 
-def constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X):
+def constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X, verbose=False):
 	""" Constructs the genome.
 	"""
 	
@@ -177,9 +179,24 @@ def constructMultiGenome(roll, yaw, pitch, vx, vy, vz, snapshot_time_interval, X
 	for v in range(n_views):
 		genome += [roll[v] / angle_normalizer, yaw[v] / angle_normalizer, pitch[v] / angle_normalizer, ((vx[v]/ 1000.0)*snapshot_time_interval) / t_scale, ((vy[v]/ 1000.0)*snapshot_time_interval) / t_scale, ((vz[v]/ 1000.0)*snapshot_time_interval) / t_scale];
 
+	if(verbose):
+		n_negative = 0;
+		
 	for p in range(n_world_points):
+		# ensure positive Z-coordinate:
+		if(X[p,2] < 0):
+			
+			X[p,2] = -X[p,2];
+			
+			if(verbose):
+				n_negative += 1;
+				
+		# add coordinate to genome:
 		genome += (X[p,:] / world_scale).tolist();
-
+	
+	if(verbose):
+		print 'Number of negative points: %d' % n_negative;
+	
 	for g in range(len(genome)):
 		gene = genome[g];
 		if(gene >= 1.0):

@@ -1195,6 +1195,8 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 			they are from the observed locations.	
 	"""
 
+	POINT_BEHIND_PENALTY = 1000;
+
 	distCoeffs = np.zeros([4]); # distortion coefficients
 
 	# per camera, project the world points into the image and calculate the error with respect to the measured image points:
@@ -1220,7 +1222,10 @@ def calculateReprojectionError(Rs, Ts, X, IPs, n_cameras, n_world_points, K):
 			# only determine error if the point is observed in the image:
 			if(observed(measured_image_points[ip])):
 				# we need a high error for a point that is behind the camera (not yet implemented):
-				error_per_point[ip] += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
+				if(pointBehindCamera(X[ip], t, R)):
+					error_per_point[ip] += POINT_BEHIND_PENALTY;
+				else:
+					error_per_point[ip] += np.linalg.norm(image_points[ip] - measured_image_points[ip]);
 			err += error_per_point[ip];
 
 		# print 'Total error: %f' % total_error;
@@ -1252,6 +1257,8 @@ def infeasibleP2(x1, x2, R1, t1, R2, t2, K):
 			behind one of the cameras. If so, it returns 1, else 0. """
 
 	infeasible = 0;
+
+	print 'Checking whether point is infeasible is probably not correct: we were assuming an external, not a camera reference frame'
 
 	#n = x1.shape[0]
 	#if x2.shape[0] != n:
@@ -1297,9 +1304,23 @@ def infeasibleP2(x1, x2, R1, t1, R2, t2, K):
 	
 	return infeasible;
 
-	# in case (b) it can immediately return the triangulated points as well...
-
+def pointBehindCamera(X_w, t, R):
+	""" Given a world point, camera location and rotation, return whether the point lies behind the camera.
+	"""
 	
+	# camera reference frame
+	# rotation is the rotation of world points
+	# translation is the translation of world points
+	
+	X_w = X_w.reshape([3,1]);
+	# v points from the second camera's optical center to the world point:
+	v = X_w[:3] + t;
+	# camera's optical axis is rotated with R
+	v = np.dot(R, v);
+	if(v[2] < 0):
+		return True;
+	else:
+		return False;
 
 
 def getProjectionMatrix(R, t, K):
