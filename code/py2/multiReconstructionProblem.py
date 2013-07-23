@@ -43,6 +43,8 @@ class multiReconstructionProblem(base):
 		# Should be adapted to except 'missing' points
 		(err, errors_per_point) = VO.calculateReprojectionError(Rs, Ts, X, self.IPs, self.n_cameras, self.n_world_points, self.K);
 
+
+		pdb.set_trace(); # should err not be a normal float?
 		# return the fitness:
 		return [float(err)];
 			
