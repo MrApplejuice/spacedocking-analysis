@@ -14,17 +14,19 @@ from flightpaths import plotFlownPaths
 
 class TriplePlot:
   def __init__(self):
-    self.fig = pl.figure()
-    self.plt1 = self.fig.add_subplot(2, 1, 1)
-    self.plt2 = self.fig.add_subplot(2, 1, 2)
+    self.fig = pl.figure(facecolor='white', edgecolor='white')
+    self.plt1 = self.fig.add_subplot(1, 1, 1);
+    #self.plt1 = self.fig.add_subplot(2, 1, 1)
+    #self.plt2 = self.fig.add_subplot(2, 1, 2)
     #self.plt3 = self.fig.add_subplot(3, 1, 3)
     
     self.plt1.hold(True)
-    self.plt2.hold(True)
+    #self.plt2.hold(True)
     #self.plt3.hold(True)
     
-    self.plt1.set_ylabel("#features")
-    self.plt2.set_ylabel("Summed feature strengths")
+    self.plt1.set_ylabel("Number of features")
+    self.plt1.set_xlabel("Distance to marker")
+    #self.plt2.set_ylabel("Summed feature strengths")
     #self.plt3.ylabel("")
 
     self.currentMaxCounter = 0
@@ -43,15 +45,15 @@ class TriplePlot:
     if featureCount > 0:
       if not self.prevData is None:
         self.plt1.plot([self.prevData["frame counter"], frameCounter], [self.prevData["feature count"], featureCount], '-k')
-        self.plt2.plot([self.prevData["frame counter"], frameCounter], [self.prevData["summed feature strength"], summedFeatureStrength], '-k')
+        #self.plt2.plot([self.prevData["frame counter"], frameCounter], [self.prevData["summed feature strength"], summedFeatureStrength], '-k')
         #self.plt3.plot([self.prevData["frame counter"], frameCounter], map(lambda x, y: x / y, [self.prevData["summed feature strength"], summedFeatureStrength], [self.prevData["feature count"], featureCount]), '-k')
 
-      self.plt1.plot([frameCounter], [featureCount], 'xk')
-      self.plt2.plot([frameCounter], [summedFeatureStrength], 'xk')
+      self.plt1.plot([frameCounter], [featureCount], 'ok')
+      #self.plt2.plot([frameCounter], [summedFeatureStrength], 'xk')
       #self.plt3.plot([frameCounter], [summedFeatureStrength / featureCount], 'xk')
         
     self.plt1.set_xlim(0, self.currentMaxCounter)
-    self.plt2.set_xlim(0, self.currentMaxCounter)
+    #self.plt2.set_xlim(0, self.currentMaxCounter)
     #self.plt3.set_xlim(0, self.currentMaxCounter)
       
     if featureCount == 0:

@@ -22,7 +22,7 @@ from VisualOdometry import *
 import pylab as Plot
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
-
+from analyzeDistanceVariation import *
 
 # size(result) -> total number of samples
 # size(result[i]['frames']) == 5
@@ -1494,4 +1494,15 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		#pl.title('Ground truth TTC values');
 		#pdb.set_trace();
 		
-		
+def distanceVariationAnalysis():
+	""" Select only trajectories of which we are pretty sure that they are well estimated.
+		Then evaluate the number of features during an approach.
+	"""
+	data = readdata.loadData("../data/output.txt")
+	filtered_data = filterDataForApproachingSamples(data);
+	#plotFlownPaths(filtered_data);
+	
+	# plot for drone 2:
+	extractFeaturesFromFile("../data/output.txt", resampledResolution=(640, 360));
+	# plot for drone 1:
+	extractFeaturesFromFile("../data/output.txt");
