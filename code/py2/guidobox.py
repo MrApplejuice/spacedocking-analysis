@@ -1395,9 +1395,28 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	#pie(fracs, explode=explode, labels=labels,autopct='%1.1f%%', shadow=True, startangle=90)
 	pl.figure(facecolor='white', edgecolor='white');
 	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
-	pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((246.0/255.0,103.0/255.0,47.0/255.0), (246.0/255.0,183.0/255.0,47.0/255.0)), shadow=True);
+	pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((62.0/255.0,229.0/255.0,40.0/255.0), (238.0/255.0,229.0/255.0,40.0/255.0)), shadow=True);
 	
-	pdb.set_trace();
+	n_bins = 5;
+	(dist_hist, bin_edges) = np.histogram(distances_to_marker, range=[0.0,float(n_bins)], bins=n_bins, density=False);
+	outliers = n_samples * n_frames - np.sum(dist_hist);
+	ldh = dist_hist.tolist();
+	ldh += [outliers];
+	dist_hist = np.asarray(ldh);
+	dist_hist = dist_hist.astype('float');
+	dist_hist /= float(np.sum(dist_hist));
+	fracs = dist_hist * 100;
+	labels = [];
+	for be in range(len(bin_edges)-1):
+		labels += ['(%1.1f, %1.1f)' % (bin_edges[be], bin_edges[be+1])];
+	labels += ['Other'];
+	pl.figure(facecolor='white', edgecolor='white');
+	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
+	my_norm = mpl.colors.Normalize(0, 1); # maps your data to the range [0, 1]
+	my_cmap = mpl.cm.get_cmap('Blues'); # can pick your color map
+	color_vals = np.cumsum(fracs) / 100.0;
+	pl.pie(fracs, labels = labels, autopct='%1.1f%%', shadow=True, colors=my_cmap(my_norm(color_vals)));
+	pl.title('Estimated distance to marker');
 	
 	# show a histogram of the distances:
 	pl.figure(facecolor='white', edgecolor='white');
