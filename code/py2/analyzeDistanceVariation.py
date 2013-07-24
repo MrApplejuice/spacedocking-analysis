@@ -4,7 +4,8 @@ import os
 sys.path += [os.path.join(os.path.realpath("."), os.path.dirname(sys.argv[0]), p) for p in ["../universal"]]
 
 from pylab import *
-import cv, cv2
+#import cv, cv2
+import cv2
 import random
 import re
 import pylab as pl
@@ -97,6 +98,9 @@ def filterDataForApproachingSamples(data):
     if path[0][0] >= 0:
       return False # May not start behind marker
     
+    if path[-1][0] >= 0:
+      return False # May not start behind marker
+
     direction = path[-1] - path[0]
     
     if direction[0] > 0:
@@ -251,4 +255,4 @@ def doStuff():
       print "Processing", filename, "at", "x".join(map(str, resolution))
       features = extractFeaturesFromFile(filename, resampledResolution=resolution, showLiveImage=filename + "-" + "x".join(map(str, resolution)) + ".png")
 
-doStuff()
+#doStuff()
