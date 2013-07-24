@@ -1,6 +1,16 @@
 from pylab import *
+import pdb
+
+def plotMarker(plt, sz = 0.6):
+	rect1 = matplotlib.patches.Rectangle((-sz/2.0,-sz/6.0), sz/3.0, sz/3.0, color='orange')
+	rect2 = matplotlib.patches.Rectangle((-sz/6.0,-sz/6.0), sz/3.0, sz/3.0, color='blue')
+	rect3 = matplotlib.patches.Rectangle((sz/6.0,-sz/6.0), sz/3.0, sz/3.0, color='orange')
+	plt.add_patch(rect1)
+	plt.add_patch(rect2)
+	plt.add_patch(rect3)
 
 def plotFlownPaths(data, doShow=True):
+
   def plotPathArrows(plt, arrowSize=0.05):
     plt.hold(True)
     for sample in data:
@@ -12,22 +22,31 @@ def plotFlownPaths(data, doShow=True):
   result = []
 
   # Show all data
-  fig = figure()
+  fig = figure(facecolor='white', edgecolor='white')
   plt = fig.add_subplot(1, 1, 1)
   
   plotPathArrows(plt, 0.1)
   
   lims = plt.get_xaxis().get_view_interval()
   plt.set_xlim([-max(abs(lims[0]), abs(lims[1])), max(abs(lims[0]), abs(lims[1]))])
+  plotMarker(plt);
+  xlabel('X');
+  ylabel('Y');
   fig.show()
   result.append(fig)
 
   # Show interest region only
-  fig = figure()
+  fig = figure(facecolor='white', edgecolor='white')
   plt = fig.add_subplot(1, 1, 1)
   plotPathArrows(plt, 0.1)
   plt.set_xlim(-6, 6)
   plt.set_ylim(-11, 1)
+  
+  # add target to figure:
+  plotMarker(plt);
+  xlabel('X');
+  ylabel('Y');
+
   fig.show()
   result.append(fig)
 
