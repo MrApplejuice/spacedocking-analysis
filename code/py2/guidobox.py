@@ -5,6 +5,7 @@
 import sys
 sys.path.insert(0, './py2/tsne_python/')
 sys.path.insert(0, './py2/calc_tsne/')
+sys.path.insert(0, './py3/')
 #from tsne import *
 #from calc_tsne import *
 import scipy.io
@@ -23,7 +24,7 @@ import pylab as Plot
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from analyzeDistanceVariation import *
-
+from visualizeFeaturePositions import *
 # size(result) -> total number of samples
 # size(result[i]['frames']) == 5
 # result[i]['frames'][j]
@@ -1201,7 +1202,7 @@ def evaluateDistances(test_dir="../data", data_name="output.txt", selectSubset=T
 	pl.figure();
 	pl.plot(D, D_TTC, 'x');
 		
-def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, analyze_TTC=False, storeKohonenHistograms=False, KohonenFile='Kohonen.txt'):
+def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSubset=True, filterData = False, analyze_TTC=False, storeKohonenHistograms=False, KohonenFile='Kohonen.txt'):
 	""" Plots simple statistics from the database such as where the photos were taken, etc.
 		If analyze_TTC = True, it also tracks features over multiple frames and assigns Time-To-Contacs to them.
 		If selectSubset = True, only 10 samples from the database are processed.
@@ -1209,6 +1210,10 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 
 	# read the data from the database:
 	result = loadData(test_dir + "/" + data_name);
+	
+	# filter so that only trajectories going toward the marker remain:
+	if(filterData):
+		result = filterDataForApproachingSamples(result);
 	
 	if(selectSubset):
 		# select a number of random samples:
@@ -1386,6 +1391,24 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	pl.xlabel('Number of features')
 	pl.ylabel('Number of occurrences');
 	
+	n_bins = 5;
+	max_features = 125;
+	(nft_hist, bin_edges) = np.histogram(n_features_frame, range=[0.0,float(max_features)], bins=n_bins, density=False);
+	nft_hist = nft_hist.astype('float');
+	nft_hist /= float(np.sum(nft_hist));
+	fracs = nft_hist * 100;
+	labels = [];
+	for be in range(len(bin_edges)-1):
+		labels += ['(%1.1f, %1.1f)' % (bin_edges[be], bin_edges[be+1])];
+	pl.figure(facecolor='white', edgecolor='white');
+	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
+	my_norm = mpl.colors.Normalize(0, 1); # maps your data to the range [0, 1]
+	my_cmap = mpl.cm.get_cmap('Greens'); # can pick your color map
+	color_vals = np.cumsum(fracs) / 100.0;
+	pl.pie(fracs, labels = labels, autopct='%1.1f%%', shadow=True, colors=my_cmap(my_norm(color_vals)));
+	pl.title('Number of features per frame');
+	
+	# marker detection:
 	total = marker_detected + marker_not_detected;
 	perc1 = (marker_detected / total) * 100.0;
 	perc2 = (marker_not_detected / total) * 100.0;
@@ -1506,3 +1529,11 @@ def distanceVariationAnalysis():
 	extractFeaturesFromFile("../data/output.txt", resampledResolution=(640, 360));
 	# plot for drone 1:
 	extractFeaturesFromFile("../data/output.txt");
+	
+def plotFeaturePositions():
+	""" Show image coordinates of features in the data set.
+	"""
+	
+	data = readdata.loadData("../data/output.txt");
+	showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 1")
+	#showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 2")
