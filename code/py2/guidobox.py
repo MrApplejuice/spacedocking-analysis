@@ -25,6 +25,9 @@ import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from analyzeDistanceVariation import *
 from visualizeFeaturePositions import *
+
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+
 # size(result) -> total number of samples
 # size(result[i]['frames']) == 5
 # result[i]['frames'][j]
@@ -1115,9 +1118,46 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 		
 		n_features_image = len(descriptors);
 		
+		fig = pl.figure();
+		ax = fig.add_subplot(111);
+		pl.hold(True);
+		for ft in range(n_features_image):
+			print 'ft %d out of %d' % (ft, n_features_image);
+			NN_ind = findNearestNeighbor(descriptors[ft], X);
+			# get image patch of the right size:
+			Ix = keypoints[ft].pt[0];
+			Iy = keypoints[ft].pt[1];
+			Isz = keypoints[ft].size;
+			half_size = np.floor(Isz / 2);
+			x_min = np.max([0, Ix - half_size]);
+			x_max = np.min([Ix + half_size, len(im[0])]);
+			y_min = np.max([0, Iy - half_size]);
+			y_max = np.min([Iy + half_size, len(im)]);
+			ImagePatch = im[y_min:y_max, x_min:x_max];
+			# show image patch at the right coordinate:
+			Ycoord = Y[NN_ind, :];
+			# im = plt.imshow(np.random.random((100, 100)), origin='lower', cmap=cm.winter, interpolation='spline36', extent=([-1, 1, -1, 1]))
+			
+			# pl.imshow(ImagePatch, origin='lower', extent=([Ycoord[0]-half_size, Ycoord[0]+half_size, Ycoord[1]-half_size, Ycoord[1]+half_size]));
+			#oim = OffsetImage(ImagePatch, zoom=1)
+			#ab = AnnotationBbox(oim, (Ycoord[0]-half_size, Ycoord[1]-half_size), xycoords='data', frameon=False)
+			## Get the axes object from the basemap and add the AnnotationBbox artist
+			#ax.add_artist(ab)
+
+		pl.show()
+		
 		pdb.set_trace();
 		
-		
+def findNearestNeighbor(desc, X):
+	
+	n_samples = len(X);
+	dists = np.array([0.0] * n_samples);
+	for s in range(n_samples):
+		dists[s] = np.linalg.norm(desc - X[s]);
+	
+	ind = argmin(dists);
+	
+	return ind;
 
 def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
 	"""Runs t-SNE low dimension embedding on the AstroDrone database """
