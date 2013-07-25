@@ -1120,7 +1120,8 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 		
 		fig = pl.figure();
 		ax = fig.add_subplot(111);
-		pl.plot(Y[:,0], Y[:,1], ',')
+		col = (39.0/255.0, 119.0/255.0, 238.0/255.0);
+		pl.plot(Y[:,0], Y[:,1], 'o', color=col);
 		pl.hold(True);
 		zo = 10;
 		for ft in range(n_features_image):
@@ -1139,7 +1140,7 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 			# show image patch at the right coordinate:
 			Ycoord = Y[NN_ind, :];
 			# im = plt.imshow(np.random.random((100, 100)), origin='lower', cmap=cm.winter, interpolation='spline36', extent=([-1, 1, -1, 1]))
-			hs = 0.2;
+			hs = 2;
 			pl.imshow(ImagePatch, origin='lower', extent=([Ycoord[0]-hs, Ycoord[0]+hs, Ycoord[1]-hs, Ycoord[1]+hs]), zorder=zo, cmap='Greys');
 			zo += 1; # last image patch on top
 			#oim = OffsetImage(ImagePatch, zoom=1)
