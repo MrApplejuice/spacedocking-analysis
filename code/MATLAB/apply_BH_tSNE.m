@@ -68,6 +68,7 @@ if(~exist('T', 'var') || isempty(T))
     [responses, inds] = sort(responses, 'descend');
     scatter(Y(inds,1),Y(inds,2),5,responses);
     title('Responses');
+    colorbar;
 
     figure(); set(gcf, 'Color', [1 1 1]);
     [sizes, inds] = sort(sizes, 'descend');
