@@ -1,5 +1,15 @@
 function apply_BH_tSNE(X, T, n_selected, perplexity, theta, dims)
 % function apply_BH_tSNE(X, T, n_selected, perplexity, theta, dims)
+%
+% X: data matrix, N x D
+% T: possible "target", N x 1, clustered points will be colored with this
+% target
+% n_selected: number of samples that will be used for the clustering
+% (default = all)
+% perplexity, theta: parameters of BH_tSNE
+% dims: intermediate dimensionality
+%
+% The function can be called without arguments.
 
 addpath('../py2/bh_tsne');
 
