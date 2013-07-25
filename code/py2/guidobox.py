@@ -1090,7 +1090,35 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 	for sam in range(n_samples):
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
 		
+def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_images", clustering_name="./MATLAB/Y.mat", data_name = './MATLAB/X.mat'):
+	
+	# load the 
+	Y = scipy.io.loadmat(clustering_name);
+	Y = Y['Y'];
+	X = scipy.io.loadmat(data_name);
+	X = X['X'];
 		
+	# get image names from directory:
+	image_names = os.listdir(test_dir + "/" + target_name);
+	
+	# number of images:
+	n_images = len(image_names);
+	
+	imn = 0;
+	for iname in image_names:
+	
+		print 'Image %d' % imn
+		
+		image_name = test_dir + "/" + "/" + target_name + "/" + iname;
+			
+		(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name, IM_RESIZE=True);
+		
+		n_features_image = len(descriptors);
+		
+		pdb.set_trace();
+		
+		
+
 def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
 	"""Runs t-SNE low dimension embedding on the AstroDrone database """
 	
