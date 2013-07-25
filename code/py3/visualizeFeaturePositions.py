@@ -27,13 +27,14 @@ def showFeaturePositions(samples, title=""):
       for f in frame["features"]["features"]:
         extents = [none_extrema(min, f["x"], extents[0]), none_extrema(min, f["y"], extents[1]), \
                    none_extrema(max, f["x"], extents[2]), none_extrema(max, f["y"], extents[3])]
-        plot.plot(f["x"], f["y"], ',', color=col, markeredgecolor = col); xs.append(f["x"]);	ys.append(f["y"]);
+        xs.append(f["x"]);	ys.append(f["y"]);
   if all([not x is None for x in extents]):
     plot.plot([extents[0], extents[2], extents[2], extents[0], extents[0]], \
               [extents[1], extents[1], extents[3], extents[3], extents[1]], '-k')
     print("X: min : %f, max : %f" % (extents[0], extents[2]))
     print("Y: min : %f, max : %f" % (extents[1], extents[3]))
 
+  plot.plot(xs, ys, ',', color=col, markeredgecolor = col);
   tick_params(axis='y', which='both', left='off', right='off', labelleft='off');
   xlim((0.0, extents[2]+10));
   ylim((0.0, extents[3]+10));

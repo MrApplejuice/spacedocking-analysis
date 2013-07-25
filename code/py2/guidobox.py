@@ -1535,5 +1535,5 @@ def plotFeaturePositions():
 	"""
 	
 	data = readdata.loadData("../data/output.txt");
-	showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 1")
-	#showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 2")
+	#showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 1")
+	showFeaturePositions(filter(lambda x: "Drone 2" in x["device_version"], data), title="AR Drone 2")
