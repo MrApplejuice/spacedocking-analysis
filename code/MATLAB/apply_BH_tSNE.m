@@ -62,16 +62,19 @@ cd(curr); pause(1);
 save('Y', 'Y');
 
 if(~exist('T', 'var') || isempty(T))
+    
     % plot the related feature properties:
-    figure();
-    scatter(Y(:,1),Y(:,2),5,responses);
+    figure(); set(gcf, 'Color', [1 1 1]);
+    [responses, inds] = sort(responses, 'descend');
+    scatter(Y(inds,1),Y(inds,2),5,responses);
     title('Responses');
 
-    figure();
-    scatter(Y(:,1),Y(:,2),5,sizes);
+    figure(); set(gcf, 'Color', [1 1 1]);
+    [sizes, inds] = sort(sizes, 'descend');
+    scatter(Y(inds,1),Y(inds,2),5,sizes);
     title('Sizes');
 
-    figure();
+    figure(); set(gcf, 'Color', [1 1 1]);
     scatter(Y(:,1),Y(:,2),5,orientations);
     title('Orientations');
 else
