@@ -1093,7 +1093,7 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 	for sam in range(n_samples):
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
 		
-def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_images", clustering_name="./MATLAB/Y.mat", data_name = './MATLAB/X.mat'):
+def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_images", clustering_name="./MATLAB/Y.mat", data_name = './MATLAB/X.mat', max_images=1000):
 	
 	# load the 
 	Y = scipy.io.loadmat(clustering_name);
@@ -1107,6 +1107,19 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 	# number of images:
 	n_images = len(image_names);
 	
+	fig = pl.figure();
+	ax = fig.add_subplot(111);
+	pl.hold(True);
+	#col = (39.0/255.0, 119.0/255.0, 238.0/255.0);
+	#pl.plot(Y[:,0], Y[:,1], 'o', color=col);
+	
+	max_images = np.min([n_images, max_images]);
+	image_names = image_names[:max_images];
+	n_images = len(image_names);
+	
+	# half size of image in plot:
+	hs = 0.5;
+	
 	imn = 0;
 	for iname in image_names:
 	
@@ -1116,13 +1129,8 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 			
 		(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name, IM_RESIZE=True);
 		
-		n_features_image = len(descriptors);
+		n_features_image = len(keypoints);
 		
-		fig = pl.figure();
-		ax = fig.add_subplot(111);
-		col = (39.0/255.0, 119.0/255.0, 238.0/255.0);
-		pl.plot(Y[:,0], Y[:,1], 'o', color=col);
-		pl.hold(True);
 		zo = 10;
 		for ft in range(n_features_image):
 			print 'ft %d out of %d' % (ft, n_features_image);
@@ -1140,17 +1148,18 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 			# show image patch at the right coordinate:
 			Ycoord = Y[NN_ind, :];
 			# im = plt.imshow(np.random.random((100, 100)), origin='lower', cmap=cm.winter, interpolation='spline36', extent=([-1, 1, -1, 1]))
-			hs = 2;
 			pl.imshow(ImagePatch, origin='lower', extent=([Ycoord[0]-hs, Ycoord[0]+hs, Ycoord[1]-hs, Ycoord[1]+hs]), zorder=zo, cmap='Greys');
 			zo += 1; # last image patch on top
 			#oim = OffsetImage(ImagePatch, zoom=1)
 			#ab = AnnotationBbox(oim, (Ycoord[0]-half_size, Ycoord[1]-half_size), xycoords='data', frameon=False)
 			## Get the axes object from the basemap and add the AnnotationBbox artist
 			#ax.add_artist(ab)
+			
+		imn += 1;
 
-		pl.show()
-		
-		pdb.set_trace();
+	pl.xlim((np.min(Y[:,0])-2, np.max(Y[:,0])+2));
+	pl.ylim((np.min(Y[:,1])-2, np.max(Y[:,1])+2));
+	pl.show()
 		
 def findNearestNeighbor(desc, X):
 	
