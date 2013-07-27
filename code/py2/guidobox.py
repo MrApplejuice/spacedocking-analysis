@@ -1093,7 +1093,7 @@ def testExperimentalSetup(test_dir="../data_GDC", target_name="video_CocaCola", 
 	for sam in range(n_samples):
 		pl.plot(Distances[:,sam], color=colors[mod(sam, 3)]);
 		
-def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_images", clustering_name="./MATLAB/Y.mat", data_name = './MATLAB/X.mat', max_images=1000):
+def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_images", clustering_name="./MATLAB/Y.mat", data_name = './MATLAB/X.mat', max_images=1000, max_features=125):
 	
 	# load the 
 	Y = scipy.io.loadmat(clustering_name);
@@ -1117,8 +1117,10 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 	image_names = image_names[:max_images];
 	n_images = len(image_names);
 	
-	# half size of image in plot:
-	hs = 0.5;
+	# first gather features and patches
+	features = [];
+	patches = [];
+	NNs = [];
 	
 	imn = 0;
 	for iname in image_names:
@@ -1130,10 +1132,10 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 		(keypoints, descriptors, im2, im) = extractSURFfeaturesFromImage(image_name, IM_RESIZE=True);
 		
 		n_features_image = len(keypoints);
+		n_features = np.min([max_features, n_features_image]);
 		
-		zo = 10;
-		for ft in range(n_features_image):
-			print 'ft %d out of %d' % (ft, n_features_image);
+		for ft in range(n_features):
+			#print 'ft %d out of %d' % (ft, n_features_image);
 			NN_ind = findNearestNeighbor(descriptors[ft], X);
 			# get image patch of the right size:
 			Ix = keypoints[ft].pt[0];
@@ -1145,17 +1147,64 @@ def visualizeFeaturesInClustering(test_dir="../data_GDC", target_name="general_i
 			y_min = np.max([0, Iy - half_size]);
 			y_max = np.min([Iy + half_size, len(im)]);
 			ImagePatch = im[y_min:y_max, x_min:x_max];
-			# show image patch at the right coordinate:
-			Ycoord = Y[NN_ind, :];
-			# im = plt.imshow(np.random.random((100, 100)), origin='lower', cmap=cm.winter, interpolation='spline36', extent=([-1, 1, -1, 1]))
-			pl.imshow(ImagePatch, origin='lower', extent=([Ycoord[0]-hs, Ycoord[0]+hs, Ycoord[1]-hs, Ycoord[1]+hs]), zorder=zo, cmap='Greys');
-			zo += 1; # last image patch on top
 			#oim = OffsetImage(ImagePatch, zoom=1)
 			#ab = AnnotationBbox(oim, (Ycoord[0]-half_size, Ycoord[1]-half_size), xycoords='data', frameon=False)
 			## Get the axes object from the basemap and add the AnnotationBbox artist
 			#ax.add_artist(ab)
 			
+			features.append(descriptors[ft]);
+			patches.append(ImagePatch);
+			NNs.append(NN_ind);
+			
 		imn += 1;
+	
+	# save the matrices:
+	scipy.io.savemat('features.mat', mdict={'features': features});
+	scipy.io.savemat('patches.mat', mdict={'patches': patches});
+	scipy.io.savemat('NNs.mat', mdict={'NNs': NNs});
+	
+	# show the patches:
+	visualizePatches(Y, patches, NNs);
+
+def visualizeStoredPatches(clustering_name="./MATLAB/Y.mat", NNs_name='NNs.mat', patches_name='patches.mat', hs=0.5):
+
+	# load the files:
+	Y = scipy.io.loadmat(clustering_name);
+	Y = Y['Y'];
+	NNs = scipy.io.loadmat(NNs_name);
+	NN = NNs['NNs'];
+	NNs = [];
+	for n in range(len(NN)):
+		NNs.append(NN[n][0]);
+	patches = scipy.io.loadmat(patches_name);
+	ptch = patches['patches'];
+	patches = [];
+	for n in range(len(ptch)):
+		patches.append(ptch[n][0]);
+	
+	visualizePatches(Y, patches, NNs, hs);
+	
+def visualizePatches(Y, patches, NNs, hs=0.5):
+	""" Takes the clustered coordinates, the image patches extracted from a directory of images, and the corresponding nearest neihgbor indices.
+		Then it plots the image patches in the right places of the cluster coordinate system. 
+		hs is the half size of the image patch in the plot. 
+	"""
+	
+	fig = pl.figure(facecolor='white', edgecolor='white');
+	ax = fig.add_subplot(111);
+	pl.hold(True);
+	#col = (39.0/255.0, 119.0/255.0, 238.0/255.0);
+	#pl.plot(Y[:,0], Y[:,1], 'o', color=col);
+	zo = 10;
+	n_patches = len(patches);
+	for p in range(n_patches):
+		NN_ind = NNs[p];
+		ImagePatch = patches[p];
+		# show image patch at the right coordinate:
+		Ycoord = Y[NN_ind, :];
+		# im = plt.imshow(np.random.random((100, 100)), origin='lower', cmap=cm.winter, interpolation='spline36', extent=([-1, 1, -1, 1]))
+		pl.imshow(ImagePatch, origin='lower', extent=([Ycoord[0]-hs, Ycoord[0]+hs, Ycoord[1]-hs, Ycoord[1]+hs]), zorder=zo, cmap='Greys');
+		zo += 1; # last image patch on top
 
 	pl.xlim((np.min(Y[:,0])-2, np.max(Y[:,0])+2));
 	pl.ylim((np.min(Y[:,1])-2, np.max(Y[:,1])+2));
