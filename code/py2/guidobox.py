@@ -1667,3 +1667,31 @@ def plotFeaturePositions():
 	data = readdata.loadData("../data/output.txt");
 	#showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 1")
 	showFeaturePositions(filter(lambda x: "Drone 2" in x["device_version"], data), title="AR Drone 2")
+	
+	
+def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/AVC/'):
+	
+	resize = False;
+	W = 640;
+	H = 360;
+	dir_names = os.listdir(parent_dir_name);
+	n_features = [];
+	for dn in dir_names:
+		image_names = os.listdir(parent_dir_name + '/' + dn);
+		print 'Dir name: %s, number of images: %d\n' % (parent_dir_name + '/' + dn, len(image_names));
+		nf = [];
+		for imn in image_names:
+			(keypoints1, descriptors1, img1, img1_gray) = extractSURFfeaturesFromImage(parent_dir_name + "/" + dn + "/" + imn, resize, W, H);
+			nf.append(len(keypoints1));
+		n_features.append(np.asarray(nf));
+	
+	np.savetxt('n_features.txt', n_features);
+	
+	pl.figure();
+	pl.hold(True);
+	n_dirs = len(n_features);
+	for d in range(n_dirs):
+		pl.plot(n_features);
+	pl.show();
+			
+			
