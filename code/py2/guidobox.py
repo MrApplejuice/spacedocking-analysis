@@ -1684,14 +1684,14 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/AVC/'):
 			(keypoints1, descriptors1, img1, img1_gray) = extractSURFfeaturesFromImage(parent_dir_name + "/" + dn + "/" + imn, resize, W, H);
 			nf.append(len(keypoints1));
 		n_features.append(np.asarray(nf));
-	
-	np.savetxt('n_features.txt', n_features);
-	
+		
+		
 	pl.figure();
 	pl.hold(True);
 	n_dirs = len(n_features);
 	for d in range(n_dirs):
-		pl.plot(n_features);
+		nim = len(n_features[d]);
+		pl.plot(np.asarray(range(nim)), n_features[d]);
 	pl.show();
 			
-			
+	
