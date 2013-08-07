@@ -1694,7 +1694,7 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequ
 		n_features.append(np.asarray(nf));
 		
 	# Plot the results:
-	pl.figure();
+	pl.figure(facecolor='white', edgecolor='white');
 	pl.hold(True);
 	n_dirs = len(n_features);
 	legend_names = [];
@@ -1702,8 +1702,10 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequ
 		nim = len(n_features[d]);
 		pl.plot(np.asarray(range(nim)), smooth(n_features[d]));
 		legend_names.append(dir_names[d]);
-	if(n_dirs < 25):
-		pl.legend(legend_names);
+	#if(n_dirs < 25):
+	#	pl.legend(legend_names);
+	pl.xlabel('Image frame');
+	pl.ylabel('Number of features');
 	pl.show();
 	
 
