@@ -1677,7 +1677,8 @@ def smooth(sig, factor = 0.75):
 	return np.asarray(ret);
 	
 def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequences/'):
-	
+	""" Check whether the number of features decreases with decreasing distances on a collection of directories with images.
+	"""
 	# Get the feature numbers from the directories:
 	resize = False;
 	W = 640;
@@ -1708,5 +1709,69 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequ
 	pl.ylabel('Number of features');
 	pl.show();
 	
-
+def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_sequences/', test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
+	""" Check whether the gathered data set varies more than a normal data set. """
+	
+	# load the database, and put the features in the right format:
+	result = loadData(test_dir + "/" + data_name);
+	
+	if(selectSubset):
+		# select a number of random samples:
+		n_samples = len(result);
+		rand_inds = np.random.permutation(range(n_samples));
+		result = [result[i] for i in rand_inds[0:n_selected_samples].tolist()];
+		
+	# iterate over the data:
+	n_samples = len(result);
+	n_frames = len(result[0]['frames']);
+	
+	# X will contain the Astro Drone feature descriptor data:
+	X = [];
+	
+	for sample in result:
+		for f in range(n_frames):
+			# get frame:
+			frame = sample['frames'][f];
+			
+			nf = len(frame['features']['features']);
+			
+			# process features:
+			for ft in frame['features']['features']:
+				X.append(ft['descriptor']);
+	
+	
+	# Get the features from the directories:
+	resize = False;
+	W = 640;
+	H = 360;
+	dir_names = os.listdir(parent_dir_name);
+	# Y will contain the features from the small collection:
+	Y = [];
+	for dn in dir_names:
+		image_names = os.listdir(parent_dir_name + '/' + dn);
+		print 'Dir name: %s, number of images: %d\n' % (parent_dir_name + '/' + dn, len(image_names));
+		
+		for imn in image_names:
+			(keypoints1, descriptors1, img1, img1_gray) = extractSURFfeaturesFromImage(parent_dir_name + "/" + dn + "/" + imn, resize, W, H);
+			for kp in range(len(keypoints1)):
+				Y.append(descriptors1[kp]);
+	
+	#MX = np.matrix(X);
+	#MY = np.matrix(Y);
+	max_X = np.max(X, 0);
+	min_X = np.min(X, 0);
+	max_Y = np.max(Y, 0);
+	min_Y = np.min(Y, 0);
+	
+	pl.figure(facecolor='white', edgecolor='white');
+	pl.hold(True);
+	pl.plot(max_X, '-b');
+	pl.plot(min_X, '-b');
+	pl.plot(max_Y, '-r');
+	pl.plot(min_Y, '-r');
+	pl.xlabel('Descriptor index');
+	pl.ylabel('Value');
+	pl.show();
+	
+	
 	
