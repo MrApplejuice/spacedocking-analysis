@@ -1667,10 +1667,18 @@ def plotFeaturePositions():
 	data = readdata.loadData("../data/output.txt");
 	#showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 1")
 	showFeaturePositions(filter(lambda x: "Drone 2" in x["device_version"], data), title="AR Drone 2")
+
+def smooth(sig, factor = 0.75):
+	ret = [];
+	v = sig[0];
+	for w in sig:
+		v = factor * v + (1-factor) * w;
+		ret.append(v);
+	return np.asarray(ret);
 	
+def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequences/'):
 	
-def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/AVC/'):
-	
+	# Get the feature numbers from the directories:
 	resize = False;
 	W = 640;
 	H = 360;
@@ -1685,13 +1693,18 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/AVC/'):
 			nf.append(len(keypoints1));
 		n_features.append(np.asarray(nf));
 		
-		
+	# Plot the results:
 	pl.figure();
 	pl.hold(True);
 	n_dirs = len(n_features);
+	legend_names = [];
 	for d in range(n_dirs):
 		nim = len(n_features[d]);
-		pl.plot(np.asarray(range(nim)), n_features[d]);
+		pl.plot(np.asarray(range(nim)), smooth(n_features[d]));
+		legend_names.append(dir_names[d]);
+	if(n_dirs < 25):
+		pl.legend(legend_names);
 	pl.show();
-			
+	
+
 	
