@@ -1739,6 +1739,7 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_sequences/', 
 			for ft in frame['features']['features']:
 				X.append(ft['descriptor']);
 	
+	print 'Number of Astro Drone features: %d' % (len(X))
 	
 	# Get the features from the directories:
 	resize = False;
@@ -1756,8 +1757,8 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_sequences/', 
 			for kp in range(len(keypoints1)):
 				Y.append(descriptors1[kp]);
 	
-	#MX = np.matrix(X);
-	#MY = np.matrix(Y);
+	print 'Number of normal data set features: %d' % (len(Y))
+	
 	max_X = np.max(X, 0);
 	min_X = np.min(X, 0);
 	max_Y = np.max(Y, 0);
@@ -1773,5 +1774,49 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_sequences/', 
 	pl.ylabel('Value');
 	pl.show();
 	
+	# standard deviation:
+	std_Y = np.std(Y, 0);
+	std_X = np.array([0.0]*128);
+	X = np.matrix(X);
+	for d in range(128):
+		std_X[d] = std(X[:,d]);
 	
+	pl.figure(facecolor='white', edgecolor='white');
+	pl.hold(True);
+	pl.plot(std_X, '-b');
+	pl.plot(std_Y, '-r');
+	pl.xlabel('Descriptor index');
+	pl.ylabel('Std');
+	pl.show();
+	
+	
+	(ldX, MX, percentage_explainedX) = PCA(X);
+	(ldY, MY, percentage_explainedY) = PCA(Y);
+	
+	pl.figure(facecolor='white', edgecolor='white');
+	pl.hold(True);
+	pl.plot(percentage_explainedX, '-b');
+	pl.plot(percentage_explainedY, '-r');
+	pl.xlabel('Principal component');
+	pl.ylabel('Percentage variance explained');
+	pl.show();
+	
+def PCA(X):
+	""" Perform principal components analysis
+	"""
+
+	X = X - np.mean(X,0);
+	X = np.matrix(X);
+	covX = np.dot(X.T, X);
+	(ld, M) = np.linalg.eig(covX);
+	percentage_explained = np.cumsum(ld) / sum(ld);
+	
+	return (ld, M, percentage_explained)
+	
+	#[~, ind] = sort(diag(lambda), 'descend');
+	#   if initial_dims > size(M, 2)
+	#       initial_dims = size(M, 2);
+	#   end
+	#M = M(:,ind(1:initial_dims));
+	#   X = X * M;
 	
