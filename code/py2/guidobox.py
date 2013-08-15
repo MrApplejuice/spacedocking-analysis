@@ -1679,9 +1679,13 @@ def smooth(sig, factor = 0.75):
 		ret.append(v);
 	return np.asarray(ret);
 	
-def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequences/'):
+def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequences/', DISTANCE_PLOT = True):
 	""" Check whether the number of features decreases with decreasing distances on a collection of directories with images.
 	"""
+
+	start_distance = 3.0;
+	end_distance = 0.0;
+
 	# Get the feature numbers from the directories:
 	resize = False;
 	W = 640;
@@ -1689,8 +1693,25 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequ
 	dir_names = os.listdir(parent_dir_name);
 	n_features = [];
 	for dn in dir_names:
-		image_names = os.listdir(parent_dir_name + '/' + dn);
-		print 'Dir name: %s, number of images: %d\n' % (parent_dir_name + '/' + dn, len(image_names));
+		image_names = os.listdir(parent_dir_name + '/' + dn); 
+		
+		if(os.name == 'posix'):
+			nimn = len(image_names);
+			sort_names = [];
+			for imn in range(nimn):
+				if(len(image_names[imn]) < 14):
+					sort_names.append(image_names[imn][:6] + '0' + image_names[imn][6:]);
+				else:
+					sort_names.append(image_names[imn]);
+			inds = np.argsort(sort_names);
+			new_image_names = [];
+			for i in inds:
+				new_image_names.append(image_names[i]);
+			image_names = new_image_names;
+		
+
+		print 'Dir name: %s, number of images: %d' % (parent_dir_name + '/' + dn, len(image_names));
+		print 'First image: %s, last image: %s' % (image_names[0], image_names[-1]);
 		nf = [];
 		for imn in image_names:
 			(keypoints1, descriptors1, img1, img1_gray) = extractSURFfeaturesFromImage(parent_dir_name + "/" + dn + "/" + imn, resize, W, H);
@@ -1704,11 +1725,19 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequ
 	legend_names = [];
 	for d in range(n_dirs):
 		nim = len(n_features[d]);
-		pl.plot(np.asarray(range(nim)), smooth(n_features[d]));
+		if(DISTANCE_PLOT):
+			step = - (start_distance - end_distance) / nim;
+			distances = np.arange(start_distance, end_distance, step);
+			pl.plot(np.asarray(distances[0:nim]), smooth(n_features[d]));
+		else:
+			pl.plot(np.asarray(range(nim)), smooth(n_features[d]));
 		legend_names.append(dir_names[d]);
-	#if(n_dirs < 25):
-	#	pl.legend(legend_names);
-	pl.xlabel('Image frame');
+	if(n_dirs < 25):
+		pl.legend(legend_names);
+	if(DISTANCE_PLOT):
+		pl.xlabel('Distance');
+	else:
+		pl.xlabel('Image frame');
 	pl.ylabel('Number of features');
 	pl.show();
 	
