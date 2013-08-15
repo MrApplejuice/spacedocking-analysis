@@ -1679,7 +1679,7 @@ def smooth(sig, factor = 0.75):
 		ret.append(v);
 	return np.asarray(ret);
 	
-def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequences/', DISTANCE_PLOT = True):
+def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_seqs_constvel/', DISTANCE_PLOT = True, article_plot=False):
 	""" Check whether the number of features decreases with decreasing distances on a collection of directories with images.
 	"""
 
@@ -1695,19 +1695,19 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequ
 	for dn in dir_names:
 		image_names = os.listdir(parent_dir_name + '/' + dn); 
 		
-		if(os.name == 'posix'):
-			nimn = len(image_names);
-			sort_names = [];
-			for imn in range(nimn):
-				if(len(image_names[imn]) < 14):
-					sort_names.append(image_names[imn][:6] + '0' + image_names[imn][6:]);
-				else:
-					sort_names.append(image_names[imn]);
-			inds = np.argsort(sort_names);
-			new_image_names = [];
-			for i in inds:
-				new_image_names.append(image_names[i]);
-			image_names = new_image_names;
+		#if(os.name == 'posix'):
+		nimn = len(image_names);
+		sort_names = [];
+		for imn in range(nimn):
+			if(len(image_names[imn]) < 14):
+				sort_names.append(image_names[imn][:6] + '0' + image_names[imn][6:]);
+			else:
+				sort_names.append(image_names[imn]);
+		inds = np.argsort(sort_names);
+		new_image_names = [];
+		for i in inds:
+			new_image_names.append(image_names[i]);
+		image_names = new_image_names;
 		
 
 		print 'Dir name: %s, number of images: %d' % (parent_dir_name + '/' + dn, len(image_names));
@@ -1728,11 +1728,14 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequ
 		if(DISTANCE_PLOT):
 			step = - (start_distance - end_distance) / nim;
 			distances = np.arange(start_distance, end_distance, step);
-			pl.plot(np.asarray(distances[0:nim]), smooth(n_features[d]));
+			if(not(article_plot)):
+				pl.plot(np.asarray(distances[0:nim]), smooth(n_features[d]));
+			else:
+				pl.plot(np.asarray(distances[0:nim]), smooth(n_features[d]), '-k');
 		else:
 			pl.plot(np.asarray(range(nim)), smooth(n_features[d]));
 		legend_names.append(dir_names[d]);
-	if(n_dirs < 25):
+	if(not(article_plot) and n_dirs < 25):
 		pl.legend(legend_names);
 	if(DISTANCE_PLOT):
 		pl.xlabel('Distance');
@@ -1740,6 +1743,8 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_sequ
 		pl.xlabel('Image frame');
 	pl.ylabel('Number of features');
 	pl.show();
+	
+	pdb.set_trace();
 	
 def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_sequences/', test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
 	""" Check whether the gathered data set varies more than a normal data set. """
