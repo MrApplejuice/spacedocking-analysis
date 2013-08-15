@@ -1529,7 +1529,10 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	fracs = nft_hist * 100;
 	labels = [];
 	for be in range(len(bin_edges)-1):
-		labels += ['(%1.1f, %1.1f)' % (bin_edges[be], bin_edges[be+1])];
+		if(be == 0):
+			labels += ['[%1.1f, %1.1f]' % (bin_edges[be], bin_edges[be+1])];
+		else:
+			labels += ['(%1.1f, %1.1f]' % (bin_edges[be], bin_edges[be+1])];
 	pl.figure(facecolor='white', edgecolor='white');
 	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
 	my_norm = mpl.colors.Normalize(0, 1); # maps your data to the range [0, 1]
