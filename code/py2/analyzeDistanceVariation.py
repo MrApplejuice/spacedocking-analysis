@@ -11,6 +11,7 @@ import re
 import pylab as pl
 import readdata
 from flightpaths import plotFlownPaths
+#import numpy as np
 
 class TriplePlot:
   def __init__(self):
@@ -135,7 +136,7 @@ def calculateCorrelationStatistics(data):
     return sampledQuantities[count * 500 / 1000], \
             (sampledQuantities[count * int(round(1000 * ratio / 2)) / 1000], sampledQuantities[count * int(round(1000 * (1 - ratio / 2))) / 1000]),\
             (sampledQuantities[count * int(round(1000 * ratio)) / 1000], sampledQuantities[count * int(round(1000 * (1 - ratio))) / 1000])
-    
+
   def computeSampleSlope(sample, yfunc):
     xs = [pl.norm(frame["position"][:2]) for frame in sample["frames"]]
     ys = [yfunc(frame) for frame in sample["frames"]]
@@ -146,19 +147,50 @@ def calculateCorrelationStatistics(data):
     if y == 0:
       return 0
     return x / y
-    
+
+  def bootstrapConfidenceIntervalPercentage(sample, count=1000, ratio=0.05):
+    sampledQuantities = [0] * count
+    for i in range(count):
+      bs_sample = [random.choice(sample) for s in sample]; positive_inds = [x for x in bs_sample if x >= 0];
+      sampledQuantities[i] = (100.0 * len(positive_inds) / len(sample));
+    sampledQuantities.sort()
+    return sampledQuantities[count * 500 / 1000], \
+            (sampledQuantities[count * int(round(1000 * ratio / 2)) / 1000], sampledQuantities[count * int(round(1000 * (1 - ratio / 2))) / 1000]),\
+            (sampledQuantities[count * int(round(1000 * ratio)) / 1000], sampledQuantities[count * int(round(1000 * (1 - ratio))) / 1000])
+
   featureCountSlopes = [computeSampleSlope(s, lambda x: len(x["features"]["features"])) for s in data]
   featureResponseStrengthSlopes = [computeSampleSlope(s, lambda x: sum([f["response"] for f in x["features"]["features"]])) for s in data]
   averageFeatureResponseStrengthSlopes = [computeSampleSlope(s, lambda x: zeroedDivide(sum([f["response"] for f in x["features"]["features"]]), len(x["features"]["features"]))) for s in data]
   
+  pl.figure(facecolor='white', edgecolor='white');
+  pl.hist(featureCountSlopes, 30, normed=True);
+  pl.xlabel('Slope');
+  pl.show();
+  positive_inds = [x for x in featureCountSlopes if x > 0];
+  zero_inds = [x for x in featureCountSlopes if x == 0];
+  print 'Percentage positive slopes: %f, percentage 0: %f' % (100.0 * len(positive_inds) / len(featureCountSlopes), 100.0 * len(zero_inds) / len(featureCountSlopes));
+  print 'Percentage of slopes >= 0: %f' % (100.0 * (len(positive_inds) + len(zero_inds)) / len(featureCountSlopes))
+  
   mean, tsconfidenceInterval, osconfidenceInterval = bootstrapConfidenceInterval(featureCountSlopes, count=100000)
-  print "Feature count slope data: ", mean, osconfidenceInterval, tsconfidenceInterval
+  print "Feature count slope data, mean, one-sided confidence interval, two-sided confidence interval: ", mean, osconfidenceInterval, tsconfidenceInterval
+  
+  mean, tsconfidenceInterval, osconfidenceInterval = bootstrapConfidenceIntervalPercentage(featureCountSlopes, count=100000)
+  print "Feature count slope data, percentage test: ", mean, osconfidenceInterval, tsconfidenceInterval
 
   mean, tsconfidenceInterval, osconfidenceInterval = bootstrapConfidenceInterval(featureResponseStrengthSlopes, count=100000)
   print "Total feature response strength slope data: ", mean, osconfidenceInterval, tsconfidenceInterval
 
   mean, tsconfidenceInterval, osconfidenceInterval = bootstrapConfidenceInterval(averageFeatureResponseStrengthSlopes, count=100000)
   print "Average feature response strength slope data: ", mean, osconfidenceInterval, tsconfidenceInterval
+
+def getFilteredData(data, deviceString = "ARDrone 2"):
+	filteredData = data;
+	print "Read", len(filteredData), "samples";
+	# filter data by device version
+	deviceString = deviceString.lower();
+	filteredData = filter(lambda x: deviceString in x["device_version"].lower(), filteredData);
+	print "After device filtering:", len(filteredData);
+	return filteredData;
 
 def extractFeaturesFromFile(filename, resampledResolution=(320, 240), showLiveImage=True):
   cv2.namedWindow("video")
@@ -258,3 +290,5 @@ def doStuff():
       features = extractFeaturesFromFile(filename, resampledResolution=resolution, showLiveImage=filename + "-" + "x".join(map(str, resolution)) + ".png")
 
 #doStuff()
+
+

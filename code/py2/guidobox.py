@@ -1246,6 +1246,7 @@ def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, 
 	zs = [];
 	distances = [];
 	n_features = [];
+	total_number_of_features = 0;
 	for sample in result:
 		for f in range(n_frames):
 			# get frame:
@@ -1258,7 +1259,7 @@ def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, 
 			z = position[z_index];
 			distance_to_marker = np.linalg.norm(position);
 			nf = len(frame['features']['features']);
-			
+			total_number_of_features += nf;
 			# process features:
 			for ft in frame['features']['features']:
 				X.append(ft['descriptor']);
@@ -1269,6 +1270,8 @@ def tSNEDatabase(test_dir="../data", data_name="output.txt", selectSubset=True, 
 				zs.append(z);
 				distances.append(distance_to_marker);
 				n_features.append(nf);
+	
+	print 'Total number of features = %d' % (total_number_of_features);
 	
 	# run t-SNE on the feature database:
 	scipy.io.savemat('X.mat', mdict={'X': X});
@@ -1537,7 +1540,7 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
 	my_norm = mpl.colors.Normalize(0, 1); # maps your data to the range [0, 1]
 	my_cmap = mpl.cm.get_cmap('Greens'); # can pick your color map
-	color_vals = np.cumsum(fracs) / 100.0;
+	color_vals = (np.cumsum(fracs) / 100.0) * 0.9 + 0.1;
 	pl.pie(fracs, labels = labels, autopct='%1.1f%%', shadow=True, colors=my_cmap(my_norm(color_vals)));
 	pl.title('Number of features per frame');
 	
@@ -1650,18 +1653,29 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		#pl.title('Ground truth TTC values');
 		#pdb.set_trace();
 		
-def distanceVariationAnalysis():
+def distanceVariationAnalysis(data_file = "../data/output.txt", ARDrone1 = False):
 	""" Select only trajectories of which we are pretty sure that they are well estimated.
 		Then evaluate the number of features during an approach.
 	"""
-	data = readdata.loadData("../data/output.txt")
+	data = readdata.loadData(data_file)
 	filtered_data = filterDataForApproachingSamples(data);
+	print 'Initial data size: %d, filtered data size: %d' % (len(data), len(filtered_data));
 	#plotFlownPaths(filtered_data);
 	
 	# plot for drone 2:
-	extractFeaturesFromFile("../data/output.txt", resampledResolution=(640, 360));
-	# plot for drone 1:
-	extractFeaturesFromFile("../data/output.txt");
+	extractFeaturesFromFile(data_file, resampledResolution=(640, 360));
+	
+	# correlation statistics for AR drone 2:
+	#fd2 = getFilteredData(data, deviceString = "ARDrone 2");
+	#calculateCorrelationStatistics(fd2);
+	
+	if(ARDrone1):
+		# plot for drone 1:
+		extractFeaturesFromFile(data_file);
+			
+		# correlation statistics for AR drone 2:
+		fd1 = getFilteredData(data, deviceString = "ARDrone 1");
+		calculateCorrelationStatistics(fd1);
 	
 def plotFeaturePositions():
 	""" Show image coordinates of features in the data set.
