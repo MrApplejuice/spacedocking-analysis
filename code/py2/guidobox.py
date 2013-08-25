@@ -85,7 +85,7 @@ def getMatchedFeatures(sample, graphics=False):
 	"""
 
 	# whether to show graphics.
-	ttc_graphics = True;
+	ttc_graphics = False;
 
 	# nearest neighbor threshold for matching:
 	NN_THRESHOLD = 0.75;
@@ -1760,7 +1760,21 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_seqs
 	
 	pdb.set_trace();
 	
-def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_sequences/', test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
+def getHistogramWords(ALL_FTS, Kohonen, n_clusters=10):
+	# build a histogram based on all features of a frame:
+	n_all_fts = len(ALL_FTS);
+	image_histogram = np.array([0.0] * n_clusters);
+	distances = np.array([0.0] * n_clusters);
+	for ft in range(n_all_fts):
+		sample = np.array(ALL_FTS[ft]);
+		# find closest cluster:
+		for i in range(n_clusters):
+			distances[i] = np.linalg.norm(Kohonen[i] - sample);
+		min_ind = np.argmin(distances);
+		image_histogram[min_ind] += 1;
+	return image_histogram;
+	
+def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_seqs_constvel/', test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
 	""" Check whether the gathered data set varies more than a normal data set. """
 	
 	# load the database, and put the features in the right format:
@@ -1810,6 +1824,7 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_sequences/', 
 	
 	print 'Number of normal data set features: %d' % (len(Y))
 	
+	# check data variety with simple statistics:
 	max_X = np.max(X, 0);
 	min_X = np.min(X, 0);
 	max_Y = np.max(Y, 0);
@@ -1840,17 +1855,98 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_sequences/', 
 	pl.ylabel('Std');
 	pl.show();
 	
+	# PCA, only if enough memory:
+	#(ldX, MX, percentage_explainedX) = PCA(X);
+	#(ldY, MY, percentage_explainedY) = PCA(Y);
+	#
+	#pl.figure(facecolor='white', edgecolor='white');
+	#pl.hold(True);
+	#pl.plot(percentage_explainedX, '-b');
+	#pl.plot(percentage_explainedY, '-r');
+	#pl.xlabel('Principal component');
+	#pl.ylabel('Percentage variance explained');
+	#pl.show();
 	
-	(ldX, MX, percentage_explainedX) = PCA(X);
-	(ldY, MY, percentage_explainedY) = PCA(Y);
+	# check variety with bag of visual words representations:
+	# 1) get clusters from data
+	# 2) determine image histograms for Astro Drone and manually collected data set
+	# 3) prove higher variety of the former
+	
+	# 1) we do clustering on the Astro Drone data set (what happens if you do the opposite?
+	n_clusters = 10;
+	Koh = KohonenClustering(X, k=n_clusters, alpha=0.25, min_alpha = 0.0001, decay = 0.9999, n_iterations=20);
+	# Koh = KohonenClustering(Y, k=n_clusters, alpha=0.25, min_alpha = 0.0001, decay = 0.9999, n_iterations=20);
+	
+	# save the result:
+	scipy.io.savemat('Koh.mat', mdict={'Koh': Koh});
+	
+	# delete X and Y to save on memory:
+	del X;
+	del Y;
+	
+	# 2) determine the histograms:
+	
+	# for the Astro Drone data set:
+	HistsX = [];
+	for sample in result:
+		for f in range(n_frames):
+			# get frame:
+			frame = sample['frames'][f];
+			ALL_FTS = [];
+			# process features:
+			for ft in frame['features']['features']:
+				ALL_FTS.append(ft['descriptor']);
+			HistW = getHistogramWords(ALL_FTS, Koh, n_clusters);
+			pdb.set_trace();
+			DistW = HistW / np.sum(HistW);
+			HistsX.append(DistW);
+	
+	# for the image set:
+	HistsY = [];
+	for dn in dir_names:
+		image_names = os.listdir(parent_dir_name + '/' + dn);
+		print 'Dir name: %s, number of images: %d' % (parent_dir_name + '/' + dn, len(image_names));
+		for imn in image_names:
+			(keypoints1, descriptors1, img1, img1_gray) = extractSURFfeaturesFromImage(parent_dir_name + "/" + dn + "/" + imn, resize, W, H);
+			ALL_FTS = [];
+			for kp in range(len(keypoints1)):
+				ALL_FTS.append(descriptors1[kp]);
+			HistW = getHistogramWords(ALL_FTS, Koh, n_clusters);
+			DistW = HistW / np.sum(HistW);
+			HistsY.append(DistW);
+	
+	# 3) prove higher variety of the former
+	
+	# standard deviation:
+	std_Y = np.std(HistsY, 0);
+	std_X = np.std(HistsX, 0);
 	
 	pl.figure(facecolor='white', edgecolor='white');
 	pl.hold(True);
-	pl.plot(percentage_explainedX, '-b');
-	pl.plot(percentage_explainedY, '-r');
-	pl.xlabel('Principal component');
-	pl.ylabel('Percentage variance explained');
+	pl.plot(std_X, '-b');
+	pl.plot(std_Y, '-r');
+	pl.xlabel('Descriptor index');
+	pl.ylabel('Std');
+	pl.legend(('Astro Drone', 'Y'));
 	pl.show();
+	
+	max_X = np.max(X, 0);
+	min_X = np.min(X, 0);
+	max_Y = np.max(Y, 0);
+	min_Y = np.min(Y, 0);
+	
+	pl.figure(facecolor='white', edgecolor='white');
+	pl.hold(True);
+	pl.plot(max_X, '-b');
+	pl.plot(min_X, '-b');
+	pl.plot(max_Y, '-r');
+	pl.plot(min_Y, '-r');
+	pl.xlabel('Descriptor index');
+	pl.ylabel('Value');
+	pl.show();
+	
+	pdb.set_trace();
+		
 	
 def PCA(X):
 	""" Perform principal components analysis
