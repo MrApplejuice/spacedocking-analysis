@@ -1897,7 +1897,6 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_seqs_constvel
 			for ft in frame['features']['features']:
 				ALL_FTS.append(ft['descriptor']);
 			HistW = getHistogramWords(ALL_FTS, Koh, n_clusters);
-			pdb.set_trace();
 			DistW = HistW / np.sum(HistW);
 			HistsX.append(DistW);
 	
