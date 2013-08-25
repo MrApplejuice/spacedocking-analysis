@@ -1929,10 +1929,10 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_seqs_constvel
 	pl.legend(('Astro Drone', 'Y'));
 	pl.show();
 	
-	max_X = np.max(X, 0);
-	min_X = np.min(X, 0);
-	max_Y = np.max(Y, 0);
-	min_Y = np.min(Y, 0);
+	max_X = np.max(HistsX, 0);
+	min_X = np.min(HistsX, 0);
+	max_Y = np.max(HistsY, 0);
+	min_Y = np.min(HistsY, 0);
 	
 	pl.figure(facecolor='white', edgecolor='white');
 	pl.hold(True);
