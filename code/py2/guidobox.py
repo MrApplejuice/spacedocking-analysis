@@ -1897,8 +1897,10 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_seqs_constvel
 			for ft in frame['features']['features']:
 				ALL_FTS.append(ft['descriptor']);
 			HistW = getHistogramWords(ALL_FTS, Koh, n_clusters);
-			DistW = HistW / np.sum(HistW);
-			HistsX.append(DistW);
+			sumHistW = np.sum(HistW);
+			if(sumHistW > 0):
+				DistW = HistW / sumHistW;
+				HistsX.append(DistW);
 	
 	# for the image set:
 	HistsY = [];
@@ -1911,8 +1913,10 @@ def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_seqs_constvel
 			for kp in range(len(keypoints1)):
 				ALL_FTS.append(descriptors1[kp]);
 			HistW = getHistogramWords(ALL_FTS, Koh, n_clusters);
-			DistW = HistW / np.sum(HistW);
-			HistsY.append(DistW);
+			sumHistW = np.sum(HistW);
+			if(sumHistW > 0):
+				DistW = HistW / sumHistW;
+				HistsY.append(DistW);
 	
 	# 3) prove higher variety of the former
 	
