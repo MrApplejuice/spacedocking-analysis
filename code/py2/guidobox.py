@@ -1677,13 +1677,18 @@ def distanceVariationAnalysis(data_file = "../data/output.txt", ARDrone1 = False
 		fd1 = getFilteredData(data, deviceString = "ARDrone 1");
 		calculateCorrelationStatistics(fd1);
 	
-def plotFeaturePositions():
+def plotFeaturePositions(drone_1 = False, filter_data = False):
 	""" Show image coordinates of features in the data set.
 	"""
 	
 	data = readdata.loadData("../data/output.txt");
-	#showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 1")
-	showFeaturePositions(filter(lambda x: "Drone 2" in x["device_version"], data), title="AR Drone 2")
+	if(filter_data):
+		data = filterDataForApproachingSamples(data);
+	
+	if(drone_1):
+		showFeaturePositions(filter(lambda x: "Drone 1" in x["device_version"], data), title="AR Drone 1");
+	else:
+		showFeaturePositions(filter(lambda x: "Drone 2" in x["device_version"], data), title="AR Drone 2");
 
 def smooth(sig, factor = 0.75):
 	ret = [];
