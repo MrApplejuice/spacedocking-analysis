@@ -1706,6 +1706,7 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_seqs
 	H = 360;
 	dir_names = os.listdir(parent_dir_name);
 	n_features = [];
+	coords = [];
 	for dn in dir_names:
 		image_names = os.listdir(parent_dir_name + '/' + dn); 
 		
@@ -1726,11 +1727,15 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_seqs
 
 		print 'Dir name: %s, number of images: %d' % (parent_dir_name + '/' + dn, len(image_names));
 		print 'First image: %s, last image: %s' % (image_names[0], image_names[-1]);
+		
 		nf = [];
 		for imn in image_names:
 			(keypoints1, descriptors1, img1, img1_gray) = extractSURFfeaturesFromImage(parent_dir_name + "/" + dn + "/" + imn, resize, W, H);
 			nf.append(len(keypoints1));
+			for ft in range(nf[-1]):
+				coords.append(keypoints1[ft].pt);
 		n_features.append(np.asarray(nf));
+	
 		
 	# Plot the results:
 	pl.figure(facecolor='white', edgecolor='white');
@@ -1758,6 +1763,36 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_seqs
 	pl.ylabel('Number of features');
 	pl.show();
 	
+	Coords = np.asarray(coords)
+	fig = pl.figure(facecolor='white', edgecolor='white');
+	gs = matplotlib.gridspec.GridSpec(2, 2, width_ratios=[1,4], height_ratios=[1,4]);
+	plot = fig.add_subplot(gs[3])
+	xs = Coords[:, 0];
+	ys = Coords[:,1];
+	extents = [np.min(xs), np.min(ys), np.max(xs), np.max(ys)];
+	col = (39.0/255.0, 119.0/255.0, 238.0/255.0);
+	plot.plot(xs, ys, ',', color=col, markeredgecolor = col);
+	pl.tick_params(axis='y', which='both', left='off', right='off', labelleft='off');
+	pl.xlim((0.0, extents[2]+10));
+	pl.ylim((0.0, extents[3]+10));
+	plot.invert_yaxis();
+	#plot = fig.add_subplot(2, 2, 2);
+	plot = fig.add_subplot(gs[1]);
+	pl.hist(xs, 30, color=col);
+	pl.xlim((0.0, extents[2]+10));
+	pl.tick_params(axis='y', labelleft='off')
+	pl.tick_params(axis='x', which='both', bottom='off', top='off', labelbottom='off')
+	#plot = fig.add_subplot(2, 2, 3);
+	plot = fig.add_subplot(gs[2]);
+	pl.hist(ys, 30, orientation='horizontal', color=col);
+	pl.ylim((0.0, extents[3]+10));
+	pl.tick_params(axis='x', labelbottom='off');
+	plot.invert_yaxis();
+	plot.invert_xaxis();
+	pl.tight_layout();
+	#fig.suptitle(title)
+	fig.show();
+	
 	pdb.set_trace();
 	
 def getHistogramWords(ALL_FTS, Kohonen, n_clusters=10):
@@ -1773,7 +1808,7 @@ def getHistogramWords(ALL_FTS, Kohonen, n_clusters=10):
 		min_ind = np.argmin(distances);
 		image_histogram[min_ind] += 1;
 	return image_histogram;
-	
+
 def checkHypothesisVariation(parent_dir_name = '../data_GDC/drone2_seqs_constvel/', test_dir="../data", data_name="output.txt", selectSubset=True, n_selected_samples = 10):
 	""" Check whether the gathered data set varies more than a normal data set. """
 	
