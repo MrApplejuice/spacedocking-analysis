@@ -94,7 +94,7 @@ def getMatchedFeatures(sample, graphics=False):
 	max_n_not_observed = 1;
 	
 	# minimum number of observations of a feature to be considered for the estimate:
-	min_memory = 4; # 4 means that the features are present in all images: is that true?
+	min_memory = 4; # 4 means that the features are present in all images
 	
 	# number of frames in a stored sequence:
 	n_frames = len(sample['frames']);
@@ -1523,6 +1523,8 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	pl.hist(n_features_frame, 60,normed=True);
 	pl.xlabel('Number of features')
 	pl.ylabel('Number of occurrences');
+	
+	print 'Total number of features: %d\n' % (np.sum(np.asarray(n_features_frame)));
 	
 	n_bins = 5;
 	max_features = 125;
