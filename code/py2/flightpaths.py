@@ -30,8 +30,8 @@ def plotFlownPaths(data, doShow=True):
   lims = plt.get_xaxis().get_view_interval()
   plt.set_xlim([-max(abs(lims[0]), abs(lims[1])), max(abs(lims[0]), abs(lims[1]))])
   plotMarker(plt);
-  xlabel('X');
-  ylabel('Y');
+  xlabel('X [m]', fontsize=16);
+  ylabel('Y [m]', fontsize=16);
   fig.show()
   result.append(fig)
 
@@ -44,8 +44,8 @@ def plotFlownPaths(data, doShow=True):
   
   # add target to figure:
   plotMarker(plt);
-  xlabel('X');
-  ylabel('Y');
+  xlabel('X [m]', fontsize=16);
+  ylabel('Y [m]', fontsize=16);
 
   fig.show()
   result.append(fig)

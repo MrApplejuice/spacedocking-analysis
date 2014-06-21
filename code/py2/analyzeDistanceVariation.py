@@ -25,8 +25,8 @@ class TriplePlot:
     #self.plt2.hold(True)
     #self.plt3.hold(True)
     
-    self.plt1.set_ylabel("Number of features")
-    self.plt1.set_xlabel("Distance to marker")
+    self.plt1.set_ylabel("Number of features [-]", fontsize=16)
+    self.plt1.set_xlabel("Distance to marker [m]", fontsize=16)
     #self.plt2.set_ylabel("Summed feature strengths")
     #self.plt3.ylabel("")
 
@@ -49,7 +49,7 @@ class TriplePlot:
         #self.plt2.plot([self.prevData["frame counter"], frameCounter], [self.prevData["summed feature strength"], summedFeatureStrength], '-k')
         #self.plt3.plot([self.prevData["frame counter"], frameCounter], map(lambda x, y: x / y, [self.prevData["summed feature strength"], summedFeatureStrength], [self.prevData["feature count"], featureCount]), '-k')
 
-      self.plt1.plot([frameCounter], [featureCount], 'ok')
+      self.plt1.plot([frameCounter], [featureCount], 'k') #ok
       #self.plt2.plot([frameCounter], [summedFeatureStrength], 'xk')
       #self.plt3.plot([frameCounter], [summedFeatureStrength / featureCount], 'xk')
         

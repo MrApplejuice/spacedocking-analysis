@@ -1682,7 +1682,6 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	fracs = [perc1, perc2]
 	#explode=(0, 0.05, 0, 0)
 	#pie(fracs, explode=explode, labels=labels,autopct='%1.1f%%', shadow=True, startangle=90)
-	pdb.set_trace();
 	pl.figure(facecolor='white', edgecolor='white');
 	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
 	pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((246.0/255.0,103.0/255.0,47.0/255.0), (246.0/255.0,183.0/255.0,47.0/255.0)), shadow=True);
@@ -1709,10 +1708,12 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 			labels += ['(%1.1f, %1.1f]' % (bin_edges[be], bin_edges[be+1])];
 	pl.figure(facecolor='white', edgecolor='white');
 	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
+	pdb.set_trace();
 	my_norm = mpl.colors.Normalize(0, 1); # maps your data to the range [0, 1]
 	my_cmap = mpl.cm.get_cmap('Greens'); # can pick your color map
-	color_vals = (np.cumsum(fracs) / 100.0) * 0.9 + 0.1;
-	pl.pie(fracs, labels = labels, autopct='%1.1f%%', shadow=True, colors=my_cmap(my_norm(color_vals)));
+	color_vals = 1.0 - ((np.cumsum(fracs) / 100.0) * 0.9 + 0.1); # high is dark, low is bright 
+	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', shadow=True, colors=my_cmap(my_norm(color_vals)));
+	pl.pie(fracs, labels = labels, autopct='%1.1f%%', shadow=True, colors=my_cmap(color_vals));
 	pl.title('Number of features per frame');
 	
 	# marker detection:

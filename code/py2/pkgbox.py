@@ -1,10 +1,12 @@
 from pylab import *
 from mpl_toolkits.axes_grid import AxesGrid
 from matplotlib.transforms import Affine2D
-import cv, cv2
+#import cv, cv2
+import cv2
 import readdata
 import re
-import pyopencl as cl
+#import pyopencl as cl
+from analyzeDistanceVariation import *
 
 def generateOpenCLContext():
   result = None
@@ -596,8 +598,16 @@ from flightpaths import plotFlownPaths
 
 def doStuff():  
   #data = readdata.loadData("data_GDC/output_GDC.txt")
-  data = readdata.loadData("../data/data-2013.06.11-thesis.txt")
-  plotFlownPaths(data)
+  #data = readdata.loadData("../data/data-2013.06.11-thesis.txt")
+  data = readdata.loadData("../data/output.txt")
+  filtered_data = filterDataForApproachingSamples(data);
+  #plotFlownPaths(filtered_data);
+  
+  # plot for drone 2:
+  extractFeaturesFromFile("../data/output.txt", resampledResolution=(640, 360));
+  
+  # plot for drone 1:
+  extractFeaturesFromFile("../data/output.txt");
 
   #matchData("data_PKG/feature-rich-scenes/window-close.jpg", "data_PKG/feature-rich-scenes/dishes.jpg")   
   #matchData("data_PKG/feature-rich-scenes/window-far.jpg", "data_PKG/feature-rich-scenes/window-close.jpg")   
