@@ -19,7 +19,7 @@ import numpy as np;
 from matplotlib import pyplot as pl;
 from matplotlib.transforms import Affine2D
 from mpl_toolkits.axes_grid import AxesGrid
-from VisualOdometry import *
+#from VisualOdometry import *
 import pylab as Plot
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
@@ -317,6 +317,171 @@ def determineTTCLinearFit(feature):
 	#pl.hold=False;
 		
 	return TTC;
+
+
+def getTTCLines(sample, graphics=False):
+	"""	Given a sample from the database (consisting of 5 frames), matches features from one frame to the next 
+		and determines the TTC with the help of inter-feature distances.
+			
+			input:
+			- sample from the database 
+			- graphics: whether to show all kinds of plots
+
+			output:			
+			- TimeToContact (per image pair one estimate)
+			- TTC_histograms (one per image pair)
+			- n_features_used_for_estimate
+	"""
+
+	# whether to show graphics.
+	ttc_graphics = True;
+
+	# nearest neighbor threshold for matching:
+	NN_THRESHOLD = 0.75;
+	
+	# number of frames in a stored sequence:
+	n_frames = len(sample['frames']);
+	
+	# first show velocities, angles:
+	
+	roll = np.array([0.0] * n_frames);
+	yaw = np.array([0.0] * n_frames);
+	pitch = np.array([0.0] * n_frames);
+	vx = np.array([0.0] * n_frames);
+	vy = np.array([0.0] * n_frames);
+	x = np.array([0.0] * n_frames);
+	y = np.array([0.0] * n_frames);
+	z = np.array([0.0] * n_frames);
+	for fr in range(n_frames):
+		roll[fr] = sample['frames'][fr]['euler_angles'][roll_index];
+		yaw[fr] = sample['frames'][fr]['euler_angles'][yaw_index];
+		pitch[fr] = sample['frames'][fr]['euler_angles'][pitch_index];
+		vx[fr] = sample['frames'][fr]['velocities'][vx_index]; # velocities, not ground_speed!!!
+		vy[fr] = sample['frames'][fr]['velocities'][vy_index];
+		x[fr] = sample['frames'][fr]['position'][x_index];
+		y[fr] = sample['frames'][fr]['position'][y_index];
+		z[fr] = sample['frames'][fr]['position'][z_index];
+	
+	if(graphics):
+		pl.figure();
+		pl.hold(True);
+		pl.plot(roll);
+		pl.plot(pitch);
+		pl.plot(yaw);
+		pl.legend(('roll','pitch','yaw'), 'upper right')
+		pl.show();
+		
+		pl.figure();
+		pl.hold(True);
+		pl.plot(vx);
+		pl.plot(vy);
+		pl.legend(('vx','vy'), 'upper right')
+		pl.show();
+		
+		pl.figure();
+		pl.plot(z);
+		pl.legend(('z'), 'upper right')
+		pl.show();
+		
+		pl.figure();
+		pl.hold(True);
+		pl.plot(x);
+		pl.plot(y);
+		pl.legend(('x','y'), 'upper right')
+		pl.show();
+	
+	# will contain the time to contact estimates:
+	TTC_histograms = [];
+	TimeToContact = np.array([1E4]*(n_frames-1));
+	n_features = np.array([0]* (n_frames-1));
+	
+	for fr in range(n_frames-1):
+
+		pdb.set_trace();
+
+		# current and next frame, numbers of features
+		frame1 = sample['frames'][fr];		
+		n_features1 = len(FTS);
+		frame2 = sample['frames'][fr+1];
+		n_features2 = len(frame2['features']['features']);
+		matched1 = np.array([0] * n_features1);
+		matched2 = np.array([0] * n_features2);
+		matched_coords_1 = [];
+		matched_coords_2 = [];
+		
+
+		if(graphics):
+			pl.figure();
+			pl.hold(True);
+
+		# match the features:
+		for ft1 in range(n_features1):
+
+			# determine the descriptor distances between the features:
+			distances = np.array([0.0] * n_features2);
+			for ft2 in range(n_features2):
+				# use the last added descriptor:
+				distances[ft2] = np.linalg.norm(np.array(frame1['features']['features'][ft1]['descriptor']) - np.array(frame2['features']['features'][ft2]['descriptor']));
+			
+			# sort the distances:
+			sindices = np.argsort(distances);
+			
+			# the second nearest neighbor has to be sufficiently far for a match:
+			if(len(distances) > 1 and distances[sindices[0]] / distances[sindices[1]] < NN_THRESHOLD):
+				# we have a match:
+				n_features[fr] += 1;
+				matched1[ft1] = 1;
+				matched2[sindices[0]] = 1;
+				
+				# feature coordinates:				
+				x1 = frame1['features']['features'][ft1]['x'];
+				y1 = frame1['features']['features'][ft1]['y'];
+				x2 = frame2['features']['features'][sindices[0]]['x'];
+				y2 = frame2['features']['features'][sindices[0]]['y'];
+				matched_coords_1 = matched_coords_1 + [[x1,y1]];
+				matched_coords_2 = matched_coords_2 + [[x2,y2]];				
+
+				if(graphics):
+					# plot a line between the matched feature coordinates:
+					pl.plot([x1, x2], [y1,y2]);
+
+		
+		if(graphics):
+			pl.title('t = %d' % (fr));
+			pl.show();
+		
+		# determine the TTC with inter-features distances:
+		# For each feature determine its spatial distance to all other features, and the same for the matching features
+		# Add the corresponding TTC estimate to the histogram
+		TTC_estimates = [];
+		for ft_11 in range(n_features1):
+			for ft_12 in range(ft_11+1, n_features1):
+				dist_im1 = np.linalg.norm(np.array(matched_coords_1(ft_11)) - np.array(matched_coords_1(ft_12)));
+				dist_im2 = np.linalg.norm(np.array(matched_coords_2(ft_11)) - np.array(matched_coords_2(ft_12)));
+				TTC = dist_im1 / (dist_im2 - dist_im1);
+				TTC_estimates += TTC;
+
+		TTC_histograms += [TTC_estimates];
+
+		if(ttc_graphics):
+			# show the TTC histogram:
+			if(len(TTC_estimates) > 0):
+				pl.figure();
+				pl.hist(TTC_estimates);
+				pl.title('TTC ests')
+				pl.show();
+		
+		# estimate TTC on the basis of the histogram:
+		if(len(TTC_estimates) > 0):
+			TimeToContact[fr] = np.median(TTC_estimates);
+		else:
+			TimeToContact[fr] = 1E3;
+
+		# do we have to do this here?
+		TimeToContact[fr] *= snapshot_time_interval;
+	
+
+	return (TimeToContact, TTC_estimates, n_features);
 
 def matchTwoImages(test_dir, image_name1, image_name2, NN_THRESHOLD = 0.9):
 
@@ -1451,6 +1616,9 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		
 		
 		if(analyze_TTC):
+			# time to contact from line sizes:
+			(TTC, TTC_hists, nfs) = getTTCLines(sample, graphics=True);
+
 			# time to contact estimated with feature sizes:
 			(TTC[sp], NF[sp], TTC_estimates, FTS_USED, ALL_FTS) = getMatchedFeatures(sample);
 			TTC_ests = TTC_ests + TTC_estimates;
@@ -1514,13 +1682,14 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 	fracs = [perc1, perc2]
 	#explode=(0, 0.05, 0, 0)
 	#pie(fracs, explode=explode, labels=labels,autopct='%1.1f%%', shadow=True, startangle=90)
+	pdb.set_trace();
 	pl.figure(facecolor='white', edgecolor='white');
 	#pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((37.0/255.0,222.0/255.0,211.0/255.0), (37.0/255.0,222.0/255.0,37.0/255.0)), shadow=True);
 	pl.pie(fracs, labels = labels, autopct='%1.1f%%', colors=((246.0/255.0,103.0/255.0,47.0/255.0), (246.0/255.0,183.0/255.0,47.0/255.0)), shadow=True);
 	
 	# number of features:
 	pl.figure(facecolor='white', edgecolor='white');
-	pl.hist(n_features_frame, 60,normed=True);
+	pl.hist(n_features_frame, 60,normed=True,facecolor='green');
 	pl.xlabel('Number of features')
 	pl.ylabel('Number of occurrences');
 	
@@ -1654,6 +1823,9 @@ def plotDatabaseStatistics(test_dir="../data", data_name="output.txt", selectSub
 		#pl.plot(time_steps, np.median(GT_TTC, axis=0), color=(0.0,0.0,1.0), linewidth=2);
 		#pl.title('Ground truth TTC values');
 		#pdb.set_trace();
+
+	# show the graphs
+	pl.show();
 		
 def distanceVariationAnalysis(data_file = "../data/output.txt", ARDrone1 = False):
 	""" Select only trajectories of which we are pretty sure that they are well estimated.
