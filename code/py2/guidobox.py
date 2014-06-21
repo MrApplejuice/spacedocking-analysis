@@ -1937,10 +1937,10 @@ def checkHypothesisDecreasingFeatures(parent_dir_name = '../data_GDC/drone2_seqs
 	if(not(article_plot) and n_dirs < 25):
 		pl.legend(legend_names);
 	if(DISTANCE_PLOT):
-		pl.xlabel('Distance');
+		pl.xlabel('Distance [m]', fontsize=16);
 	else:
 		pl.xlabel('Image frame');
-	pl.ylabel('Number of features');
+	pl.ylabel('Number of features [-]', fontsize=16);
 	pl.show();
 	
 	Coords = np.asarray(coords)
